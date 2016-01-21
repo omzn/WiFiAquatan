@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WiFi Aquatan Manager</title>
+<link rel="stylesheet" href="pure.css">
+<script type="text/javascript" src="/j.js"></script>
+<style>
+body {
+    color: #526066;
+}
+h2, h3 {
+    letter-spacing: 0.25em;
+    text-transform: uppercase;
+    font-weight: 600;
+}
+p {
+    line-height: 1.6em;
+}
+.l-content {
+    margin: 0 auto;
+}
+.l-box {
+    padding: 0.5em 2em;
+}
+.if-head {
+    color: black;
+    font-weight: 500;
+}
+.p-m {
+    box-shadow: 0 1px 1px rgba(0,0,0, 0.10);
+}
+.a-t,
+.if {
+    max-width: 980px;
+    margin: 0 auto;
+}
+.footer {
+    background: #111;
+    color: #888;
+    text-align: center;
+}
+.footer a {
+color: #ddd;
+}
+</style>
+</head>
+<body>
+
+<div class="p-m pure-menu-horizontal">
+    <a href="#" class="pure-menu-heading">WiFi Aquatan</a>
+</div>
+
+<div class="l-content">
+  <div class="l-box">
+    <h3 class="if-head">WiFi Setting</h3>
+    <p>Please enter your password by selecting the SSID.<br />
+      You can specify site name for accessing a name like http://aquamonitor.local/</p>
+
+    <form class="pure-form pure-form-stacked" method="get" action="setap" name="tm"><label for="ssid">SSID: </label>
+      <select id="ssid" name="ssid">
+
+
+      </select>
+      <label for="pass">Password: </label><input id="pass" name="pass" length=64 type="password">
+<label for="site" >Site name: </label><input id="site" name="site" length=32 type="text" placeholder="aquamonitor">
+    <input size="4" name="year" type="hidden"><input size="2" name="mon" type="hidden">
+    <input size="2" name="day" type="hidden"><input size="2" name="wday" type="hidden">
+    <input size="2" name="hour" type="hidden"><input size="2" name="min" type="hidden">
+    <input size="2" name="sec" type="hidden">
+    <button class="pure-button pure-button-primary" type="submit">Submit</button></form>
+    <script language="JavaScript"><!--
+    function rt(){ dt = new Date(); document.tm.year.value = dt.getYear();document.tm.mon.value = dt.getMonth() + 1; document.tm.day.value = dt.getDate(); document.tm.wday.value = dt.getDay(); document.tm.hour.value = dt.getHours(); document.tm.min.value = dt.getMinutes(); document.tm.sec.value = dt.getSeconds();}
+    // -->
+    </script><script language="JavaScript"><!-- 
+    setInterval("rt()",1000);
+    // -->
+    </script>
+  </div>
+</div>
+<div class="footer l-box">
+    <p>
+        WiFi Aquatan Monitor by @omzn 2015 / All rights researved
+    </p>
+</div>
+</body>
+</html>

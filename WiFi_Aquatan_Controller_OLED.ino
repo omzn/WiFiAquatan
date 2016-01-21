@@ -21,7 +21,6 @@
 #include "attiny_i2c.h"
 
 #define PIN_1WIRE 2
-#define PIN_OLED_RST 16  // Connect Micro OLED RST to pin 16
 #define PIN_SDA 4
 #define PIN_SCL 14
 #define PIN_FAN 12
@@ -48,8 +47,8 @@
 #define EEPROM_MDNS_ADDR    96
 // schedule:  0=flag 1=on_h 2=on_m 3=off_h 4=off_m
 #define EEPROM_SCHEDULE_ADDR  128
-// threshold: 0=flag 1=hi_l(LB) 2=hi_l(HB) 3=lo_l(LB) 4=lo_l(HB)
-#define EEPROM_THRESHOLD_ADDR 133
+// autofan: 0=flag 1=hi_l(LB) 2=hi_l(HB) 3=lo_l(LB) 4=lo_l(HB)
+#define EEPROM_AUTOFAN_ADDR 133
 #define EEPROM_TWITTER_TOKEN_ADDR 138
 #define EEPROM_TWITTER_CONFIG_ADDR 170
 #define EEPROM_WATER_LEVEL_ADDR  186
@@ -68,7 +67,7 @@ int current_on_m;
 int current_off_h;
 int current_off_m;
 
-int use_threshold = 0;
+int use_autofan = 0;
 float current_hi_l;
 float current_lo_l;
 
@@ -79,7 +78,7 @@ int use_twitter = 0;
 String stewgate_host = "stewgate-u.appspot.com";
 String stewgate_token = "";
 
-const char* apSSID   = "AQUAMON";
+const char* apSSID   = "AQUAMON1";
 boolean settingMode;
 String ssidList;
 String sitename = "aquamon";
@@ -114,6 +113,7 @@ void RTCHandler() {
 
 void BTNHandler() {
   detachInterrupt(PIN_BTN);
+  delayMicroseconds(1000);
   oled_changed = true;
   oled_page++;
   oled_page %= NUM_PAGES;
@@ -174,7 +174,17 @@ void setup() {
     }
   }
   settingMode = true;
-  setupMode();
+  WiFi.mode(WIFI_STA);
+  WiFi.disconnect();
+  delay(100);
+  WiFi.mode(WIFI_AP);
+  WiFi.softAPConfig(apIP, apIP, IPAddress(255, 255, 255, 0));
+  WiFi.softAP(apSSID);
+  dnsServer.start(53, "*", apIP);
+  startWebServer_setting();
+  Serial.print("Starting Access Point at \"");
+  Serial.print(apSSID);
+  Serial.println("\"");
 }
 
 void loop() {
@@ -205,7 +215,7 @@ void loop() {
     oled.print(buf);
 
     timer_count++;
-//    if (!settingMode && timer_count >= 30) {
+    //    if (!settingMode && timer_count >= 30) {
     if (!settingMode) {
       ds18b20.requestTemperatures();
       temperature_val = ds18b20.getTempCByIndex(0);
@@ -256,7 +266,7 @@ void loop() {
       }
     }
 
-    if (use_threshold) {
+    if (use_autofan) {
       if (temperature_val >= current_hi_l && fan_val == 0) {
         fan_val = 255;
         fan.value(fan_val);
@@ -272,24 +282,6 @@ void loop() {
     rtcint = 0;
   }
   ESP.wdtFeed();
-}
-
-/***************************************************************
- * setup mode functions
- ***************************************************************/
-
-void setupMode() {
-  WiFi.mode(WIFI_STA);
-  WiFi.disconnect();
-  delay(100);
-  WiFi.mode(WIFI_AP);
-  WiFi.softAPConfig(apIP, apIP, IPAddress(255, 255, 255, 0));
-  WiFi.softAP(apSSID);
-  dnsServer.start(53, "*", apIP);
-  startWebServer_setting();
-  Serial.print("Starting Access Point at \"");
-  Serial.print(apSSID);
-  Serial.println("\"");
 }
 
 /***************************************************************
@@ -355,13 +347,14 @@ void OLEDshowLedStatus() {
   oled.setCursor(0, 16);
   oled.print("LED");
   if (led_val > 0) {
-    oled.fillCircle(44, 28, 11, WHITE);
+    oled.fillCircle(44, 28, 12, WHITE);
     oled.setCursor(39, 25);
     oled.setTextColor(BLACK, WHITE); // 'inverted' text
     oled.print("ON");
     oled.setTextColor(WHITE, BLACK);
   } else {
     oled.drawCircle(44, 28, 11, WHITE);
+    oled.drawCircle(44, 28, 12, WHITE);
     oled.setCursor(36, 25);
     oled.setTextColor(WHITE);
     oled.print("OFF");
@@ -382,13 +375,14 @@ void OLEDshowFanStatus() {
   oled.setCursor(64, 16);
   oled.print("FAN");
   if (fan_val > 0) {
-    oled.fillCircle(108, 28, 11, WHITE);
+    oled.fillCircle(108, 28, 12, WHITE);
     oled.setCursor(103, 25);
     oled.setTextColor(BLACK, WHITE); // 'inverted' text
     oled.print("ON");
     oled.setTextColor(WHITE, BLACK);
   } else {
     oled.drawCircle(108, 28, 11, WHITE);
+    oled.drawCircle(108, 28, 12, WHITE);
     oled.setCursor(100, 25);
     oled.setTextColor(WHITE);
     oled.print("OFF");
@@ -397,7 +391,7 @@ void OLEDshowFanStatus() {
   oled.setCursor(64, 40);
   oled.println("Temp range");
   oled.setCursor(64, 48);
-  if (!use_threshold) {
+  if (!use_autofan) {
     oled.print("none      ");
   } else {
     oled.print(current_hi_l, 1);
@@ -430,14 +424,14 @@ boolean restoreConfig() {
   current_off_h = EEPROM.read(EEPROM_SCHEDULE_ADDR + 3);
   current_off_m = EEPROM.read(EEPROM_SCHEDULE_ADDR + 4);
 
-  use_threshold = EEPROM.read(EEPROM_THRESHOLD_ADDR) == 1 ? 1 : 0;
-  uint32_t b1 = EEPROM.read(EEPROM_THRESHOLD_ADDR + 1);
-  uint32_t b2 = EEPROM.read(EEPROM_THRESHOLD_ADDR + 2);
+  use_autofan = EEPROM.read(EEPROM_AUTOFAN_ADDR) == 1 ? 1 : 0;
+  uint32_t b1 = EEPROM.read(EEPROM_AUTOFAN_ADDR + 1);
+  uint32_t b2 = EEPROM.read(EEPROM_AUTOFAN_ADDR + 2);
   current_hi_l  = (float)(b1 | b2 << 8) / 10.0;
   Serial.print("hi_l: ");
   Serial.println(current_hi_l);
-  b1 = EEPROM.read(EEPROM_THRESHOLD_ADDR + 3);
-  b2 = EEPROM.read(EEPROM_THRESHOLD_ADDR + 4);
+  b1 = EEPROM.read(EEPROM_AUTOFAN_ADDR + 3);
+  b2 = EEPROM.read(EEPROM_AUTOFAN_ADDR + 4);
   current_lo_l  = (float)(b1 | b2 << 8) / 10.0;
   Serial.print("lo_l: ");
   Serial.println(current_lo_l);
@@ -575,9 +569,6 @@ void startWebServer_setting() {
 
   Serial.print("Starting Web Server at ");
   Serial.println(WiFi.softAPIP());
-  webServer.on("/settings", []() {
-
-  });
   webServer.on("/setap", []() {
     // 時刻を設定
     RTC.sTime(webServer.arg("year").toInt() - 100,
@@ -631,7 +622,7 @@ void startWebServer_setting() {
   });
   webServer.on("/pure.css", handleCss);
   webServer.onNotFound([]() {
-    digitalWrite(PIN_LED, 1);
+    digitalWrite(PIN_LED, WEB_LED_ON);
     int n = WiFi.scanNetworks();
     delay(100);
     ssidList = "";
@@ -672,7 +663,7 @@ setInterval("rt()",1000);
 </div>
 )=====";
   webServer.send(200, "text/html", makePage("Wi-Fi Settings", s));
-  digitalWrite(PIN_LED, 0);
+  digitalWrite(PIN_LED, WEB_LED_OFF);
   });
   webServer.begin();
 }
@@ -725,7 +716,7 @@ void startWebServer_normal() {
   webServer.on("/config", handleConfig);
   webServer.on("/action",  handleAction);
   webServer.on("/schedule", handleSchedule);
-  webServer.on("/threshold", handleThreshold);
+  webServer.on("/autofan", handleAutofan);
   webServer.on("/wlevel", handleWaterLevel);
   webServer.on("/twitconf", handleTwitconf);
 //  webServer.on("/j.js",    handleJS);
@@ -775,7 +766,7 @@ void handleConfig() {
   json["on_m"] = current_on_m;
   json["off_h"] = current_off_h;
   json["off_m"] = current_off_m;
-  json["use_threshold"] = use_threshold;
+  json["use_autofan"] = use_autofan;
   json["hi_l"] = current_hi_l;
   json["lo_l"] = current_lo_l;
   json["lv_wa"] = current_lv_wa;
@@ -845,52 +836,51 @@ void handleSchedule() {
   digitalWrite(PIN_LED, WEB_LED_OFF);
 }
 
-void handleThreshold() {
+void handleAutofan() {
   digitalWrite(PIN_LED, WEB_LED_ON);
   String message;
   DynamicJsonBuffer jsonBuffer;
   JsonObject& json = jsonBuffer.createObject();
 
-  String use_tcntl = webServer.arg("use_tcntl") ;
+  String arg_autofan = webServer.arg("use_autofan") ;
   float hi_l  = webServer.arg("hi_l").toFloat();
   float lo_l  = webServer.arg("lo_l").toFloat();
 
-  Serial.print("use_tcntl:");
-  Serial.println(use_tcntl);
-  Serial.print("use_threshold:");
-  Serial.println(use_threshold);
+  Serial.print("arg_autofan:");
+  Serial.println(arg_autofan);
+  Serial.print("use_autofan:");
+  Serial.println(use_autofan);
   Serial.print("hi_l:");
   Serial.println(hi_l);
   Serial.print("current_hi_l:");
   Serial.println(current_hi_l);  
 
   int use_t_i;
-  use_t_i = (use_tcntl == "true" ? 1: 0);
+  use_t_i = (arg_autofan == "true" ? 1: 0);
   int16_t hi_l_i = (int)(hi_l * 10);
   int16_t lo_l_i = (int)(lo_l * 10);
   
-  if (use_t_i != use_threshold) {
-    use_threshold = use_t_i;    
-    EEPROM.write(EEPROM_THRESHOLD_ADDR, char(use_threshold));
+  if (use_t_i != use_autofan) {
+    use_autofan = use_t_i;    
+    EEPROM.write(EEPROM_AUTOFAN_ADDR, char(use_autofan));
     EEPROM.commit();
   }
 
   if (hi_l != current_hi_l || lo_l != current_lo_l) {
-    EEPROM.write(EEPROM_THRESHOLD_ADDR + 1, (hi_l_i       & 0xFF));
-    EEPROM.write(EEPROM_THRESHOLD_ADDR + 2, (hi_l_i >> 8  & 0xFF));
-    EEPROM.write(EEPROM_THRESHOLD_ADDR + 3, (lo_l_i       & 0xFF));
-    EEPROM.write(EEPROM_THRESHOLD_ADDR + 4, (lo_l_i >> 8  & 0xFF));
+    EEPROM.write(EEPROM_AUTOFAN_ADDR + 1, (hi_l_i       & 0xFF));
+    EEPROM.write(EEPROM_AUTOFAN_ADDR + 2, (hi_l_i >> 8  & 0xFF));
+    EEPROM.write(EEPROM_AUTOFAN_ADDR + 3, (lo_l_i       & 0xFF));
+    EEPROM.write(EEPROM_AUTOFAN_ADDR + 4, (lo_l_i >> 8  & 0xFF));
     current_hi_l = hi_l;
     current_lo_l = lo_l;
     EEPROM.commit();
   }
-  json["use_threshold"] = use_threshold;
+  json["use_autofan"] = use_autofan;
   json["hi_l"] = current_hi_l;
   json["lo_l"] = current_lo_l;
   json.printTo(message);
   webServer.send(200, "application/json", message);
-    digitalWrite(PIN_LED, WEB_LED_OFF);
-
+  digitalWrite(PIN_LED, WEB_LED_OFF);
 }
 
 void handleWaterLevel() {
@@ -1004,7 +994,6 @@ String makePage(String title, String contents) {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="stylesheet" href="/pure.css">
-<script type="text/javascript" src="/j.js"></script>
 )=====";  
   s += "<title>";
   s += title;
