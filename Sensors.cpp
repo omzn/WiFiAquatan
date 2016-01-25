@@ -25,7 +25,7 @@ void Sensors::readData() {
 }
 
 void Sensors::logData() {
-  waterTem_Log[log_wd] = waterTemp;
+  waterTempLog[log_wd] = waterTemp;
   airTempLog[log_wd] = airTemp;
   pressureLog[log_wd] = pressure;
   humidityLog[log_wd] = humidity;
