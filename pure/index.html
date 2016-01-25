@@ -161,8 +161,8 @@
 
       <div id="thres" class="pure-u-1 pure-u-md-1-2">
         <div class="l-box">
-          <h3 class="if-head">Thresholds of Temperature</h3>
-          <p>You can set the temperature thresholds for activating cooling fan. The cooling fan tries to maintain the water temperature between the higher and lower thresholds. </p>
+          <h3 class="if-head">Auto Fan Control</h3>
+          <p>You can set the temperature limits for activating cooling fan. The cooling fan tries to maintain the water temperature between the higher and lower limits. </p>
 	  <p>
 	    <form id="autofan" class="pure-form pure-form-stacked">
 	      <fieldset>
@@ -306,6 +306,7 @@ $('form#schedule').submit(function(ev) {$.post('/schedule',
 "&on_h="+$('#on_h').val()+"&on_m="+$('#on_m').val()+
 "&off_h="+$('#off_h').val()+"&off_m="+$('#off_m').val(),
 read1,"json");
+$('#ssub').prop('disabled', true);
 return false;
 });
 
@@ -313,12 +314,14 @@ $('form#autofan').submit(function(ev) {$.post('/autofan',
 "use_autofan="+$('#use_autofan').prop('checked').toString()+
 "&hi_l="+$('#hi_l').val()+"&lo_l="+$('#lo_l').val(),
 read2,"json");
+$('#tsub').prop('disabled', true);
 return false;
 });
 
 $('form#wlv').submit(function(ev) {$.post('/wlevel',
 "lv_em="+$('#lv_em').val()+"&lv_wa="+$('#lv_wa').val(),
 read4,"json");
+$('#wsub').prop('disabled', true);
 return false;
 });
 
@@ -326,6 +329,7 @@ $('form#twitconf').submit(function(ev) {$.post('/twitconf',
 "use_twitter="+$('#use_twitter').prop('checked').toString()+
 "&stew_token="+$('#stew_token').val(),
 read3,"json");
+$('#twsub').prop('disabled', true);
 return false;
 });
 
@@ -413,7 +417,6 @@ $('#off_h').prop('disabled', true);
 $('#off_m').prop('disabled', true);
 }
 if($('#use_twitter').is(":checked")){
-$('#twsub').prop('disabled', false);
 $('#stew_token').prop('disabled', false);
 } else {
 $('#twsub').prop('disabled', true);

@@ -31,7 +31,7 @@
 #define WEB_LED_ON  LOW
 #define WEB_LED_OFF HIGH
 
-#define NUM_PAGES 3
+#define NUM_PAGES 5
 
 #define I2C_PING_ADDRESS       0x26
 #define ATTINY85_LED_ADDRESS   0x27
@@ -54,6 +54,7 @@
 #define EEPROM_WATER_LEVEL_ADDR  186
 #define EEPROM_LAST_ADDR    188
 
+double airtemperature_val = 0.0;
 double temperature_val = 0.0;
 double pressure_val = 0.0;
 double humidity_val = 0.0;
@@ -87,6 +88,12 @@ volatile boolean rtcint;
 int timer_count = 0;
 int average_count = 0;
 
+int log_wd = 0;
+float wtemp_log[100];
+float atemp_log[100];
+float press_log[100];
+float humid_log[100];
+
 volatile uint8_t oled_page = 0;
 volatile boolean oled_changed = false;
 
@@ -113,7 +120,7 @@ void RTCHandler() {
 
 void BTNHandler() {
   detachInterrupt(PIN_BTN);
-  delayMicroseconds(1000);
+  delayMicroseconds(10000);
   oled_changed = true;
   oled_page++;
   oled_page %= NUM_PAGES;
@@ -166,6 +173,7 @@ void setup() {
       ds18b20.requestTemperatures();
       temperature_val = ds18b20.getTempCByIndex(0);
       bme280.read_data();
+      airtemperature_val = bme280.temperature();
       pressure_val = bme280.pressure();
       humidity_val = bme280.humidity();
       level_val = i2cping.distance();
@@ -220,13 +228,23 @@ void loop() {
       ds18b20.requestTemperatures();
       temperature_val = ds18b20.getTempCByIndex(0);
       bme280.read_data();
+      airtemperature_val = bme280.temperature();
       pressure_val = bme280.pressure();
       humidity_val = bme280.humidity();
       level_val    = i2cping.distance();
       OLEDdrawPage();
     }
     oled.display();       // Refresh the display
-    timer_count %= 30;
+    timer_count %= 900;
+
+    if (timer_count == 1) {
+      wtemp_log[log_wd] = temperature_val;
+      atemp_log[log_wd] = airtemperature_val;
+      press_log[log_wd] = pressure_val;
+      humid_log[log_wd] = humidity_val;
+      log_wd++;
+      log_wd %= 96;
+    }
 
     int hh = ((tm[2] & 0xF0) >> 4) * 10 + (tm[2] & 0x0F);
     int mm = ((tm[1] & 0xF0) >> 4) * 10 + (tm[1] & 0x0F);
@@ -304,6 +322,26 @@ void OLEDdrawPage() {
     if (oled_changed == true) {
       oled.clearDisplay();     // Clear the page
       oled.fillRect(0, 0, 127, 15, WHITE);
+      oled.setCursor(26, 3);
+      oled.setTextColor(BLACK, WHITE);
+      oled.print("WATER TEMP LOG");
+      oled.setTextColor(WHITE, BLACK);
+    }
+    OLEDshowWTGraph();
+  } else if (oled_page == 2) {
+    if (oled_changed == true) {
+      oled.clearDisplay();     // Clear the page
+      oled.fillRect(0, 0, 127, 15, WHITE);
+      oled.setCursor(32, 3);
+      oled.setTextColor(BLACK, WHITE);
+      oled.print("AIR TEMP LOG");
+      oled.setTextColor(WHITE, BLACK);
+    }
+    OLEDshowATGraph();
+  } else if (oled_page == 3) {
+    if (oled_changed == true) {
+      oled.clearDisplay();     // Clear the page
+      oled.fillRect(0, 0, 127, 15, WHITE);
       oled.setCursor(16, 3);
       oled.setTextColor(BLACK, WHITE);
       oled.print("LED & FAN STATUS");
@@ -312,7 +350,7 @@ void OLEDdrawPage() {
     }
     OLEDshowLedStatus();
     OLEDshowFanStatus();
-  } else if (oled_page == 2) {
+  } else if (oled_page == 4) {
     if (oled_changed == true) {
       oled.clearDisplay();     // Clear the page
       oled.fillRect(0, 0, 127, 15, WHITE);
@@ -325,10 +363,74 @@ void OLEDdrawPage() {
     OLEDshowServerInfo();
   }
 }
+/*    14          112
+ * 25 |
+ *    |
+ * 55 |____________
+ */
+void OLEDshowWTGraph() {
+  static int prev_log_wd = 0;
+  if (prev_log_wd != log_wd) {
+    oled.fillRect(14, 55, 112, 55, BLACK);
+    prev_log_wd = log_wd;
+  }
+  oled.setCursor(0, 16);
+  oled.print("W.Temp");
+  oled.drawLine(14, 25, 14, 55, WHITE);
+  oled.drawLine(14, 55, 112, 55, WHITE);
+  oled.drawPixel(13, 51, WHITE);
+  oled.drawPixel(13, 41, WHITE);
+  oled.drawPixel(13, 31, WHITE);
+  oled.setCursor(113, 47);
+  oled.print("1d");
+  oled.setCursor(0, 47);
+  oled.print("10");
+  oled.setCursor(0, 37);
+  oled.print("20");
+  oled.setCursor(0, 27);
+  oled.print("30");
+  for (int i = 0; i < 96; i++) {
+    int temp = (int)wtemp_log[(i + log_wd) % 96];
+    if (temp > 10 && temp < 40) {
+      oled.drawPixel(16 + (95 - i), 51 + (10 - temp), WHITE);
+    }
+  }
+}
 
+void OLEDshowATGraph() {
+  static int prev_log_wd = 0;
+  if (prev_log_wd != log_wd) {
+    oled.fillRect(14, 55, 112, 55, BLACK);
+    prev_log_wd = log_wd;
+  }
+  oled.setCursor(0, 16);
+  oled.print("A.Temp");
+  oled.drawLine(14, 25, 14, 55, WHITE);
+  oled.drawLine(14, 55, 112, 55, WHITE);
+  oled.drawPixel(13, 51, WHITE);
+  oled.drawPixel(13, 41, WHITE);
+  oled.drawPixel(13, 31, WHITE);
+  oled.setCursor(113, 47);
+  oled.print("1d");
+  oled.setCursor(0, 47);
+  oled.print("10");
+  oled.setCursor(0, 37);
+  oled.print("20");
+  oled.setCursor(0, 27);
+  oled.print("30");
+  for (int i = 0; i < 96; i++) {
+    int temp = (int)atemp_log[(i + log_wd) % 96];
+    if (temp > 10 && temp < 40) {
+      oled.drawPixel(16 + (95 - i), 51 + (10 - temp), WHITE);
+    }
+  }
+}
 void OLEDshowMeasure() {
   oled.setCursor(0, 16);
-  oled.print("Temp:  ");
+  oled.print("A.Temp:");
+  oled.print(airtemperature_val, 1);
+  oled.println(" 'C");
+  oled.print("W.Temp:");
   oled.print(temperature_val, 1);
   oled.println(" 'C");
   oled.print("Press: ");
@@ -742,6 +844,7 @@ void handleMeasure() {
   DynamicJsonBuffer jsonBuffer;
   JsonObject& json = jsonBuffer.createObject();
 
+  json["atemp"] = airtemperature_val;
   json["temp"] =  temperature_val;
   json["pressure"] = pressure_val;
   json["humidity"] = humidity_val;

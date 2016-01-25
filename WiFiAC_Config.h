@@ -26,7 +26,7 @@ class WiFiAC_Config {
     int schedule_off_h;
     int schedule_off_m;
 
-    int use_fan;
+    int use_autofan;
     float fan_hi_l;
     float fan_lo_l;
 
