@@ -20,6 +20,7 @@
 #include "bme280_i2c.h"
 #include "attiny_i2c.h"
 #include "ledlight.h"
+#include "fan.h"
 
 #define PIN_1WIRE 2
 #define PIN_SDA 4
@@ -60,11 +61,6 @@ double airtemperature_val = 0.0;
 double pressure_val = 0.0;
 double humidity_val = 0.0;
 int   level_val = 0;
-int   fan_val = 0;
-
-int use_autofan = 0;
-float current_hi_l;
-float current_lo_l;
 
 int current_lv_wa = 0;
 int current_lv_em = 0;
@@ -102,7 +98,7 @@ DallasTemperature ds18b20(&ds);
 hcsr04_i2c i2cping(I2C_PING_ADDRESS);
 bme280_i2c bme280(BME280_ADDRESS);
 ledLight   light(ATTINY85_LED_ADDRESS, ATTINY85_PIN_DIM_LED);
-attiny_i2c fan(ATTINY85_LED_ADDRESS, ATTINY85_PIN_FAN);
+fanCooler  fan(ATTINY85_LED_ADDRESS, ATTINY85_PIN_FAN);
 
 /***************************************************************
  * interrupt handlers
@@ -250,18 +246,7 @@ void loop() {
     int mm = ((tm[1] & 0xF0) >> 4) * 10 + (tm[1] & 0x0F);
 
     light.control(hh,mm);
-
-    if (use_autofan) {
-      if (temperature_val >= current_hi_l && fan_val == 0) {
-        fan_val = 255;
-        fan.value(fan_val);
-        Serial.println("Fan turned on.");
-      } else if (temperature_val <= current_lo_l && fan_val > 0) {
-        fan_val = 0;
-        fan.value(fan_val);
-        Serial.println("Fan turned off.");
-      }
-    }
+    fan.control(temperature_val);
 
     delay(10);
     rtcint = 0;
@@ -443,7 +428,7 @@ void OLEDshowLedStatus() {
 void OLEDshowFanStatus() {
   oled.setCursor(64, 16);
   oled.print("FAN");
-  if (fan_val > 0) {
+  if (fan.value() > 0) {
     oled.fillCircle(108, 28, 12, WHITE);
     oled.setCursor(103, 25);
     oled.setTextColor(BLACK, WHITE); // 'inverted' text
@@ -460,12 +445,12 @@ void OLEDshowFanStatus() {
   oled.setCursor(64, 40);
   oled.println("Temp range");
   oled.setCursor(64, 48);
-  if (!use_autofan) {
+  if (!fan.enabled()) {
     oled.print("none      ");
   } else {
-    oled.print(current_hi_l, 1);
+    oled.print(fan.lowLimit(), 1);
     oled.print("-");
-    oled.print(current_lo_l, 1);
+    oled.print(fan.highLimit(), 1);
   }
 }
 
@@ -499,17 +484,18 @@ boolean restoreConfig() {
   int e_off_m = EEPROM.read(EEPROM_SCHEDULE_ADDR + 4);
   light.setSchedule(e_on_h,e_on_m,e_off_h,e_off_m);
 
-  use_autofan = EEPROM.read(EEPROM_AUTOFAN_ADDR) == 1 ? 1 : 0;
+  int use_autofan = EEPROM.read(EEPROM_AUTOFAN_ADDR) == 1 ? 1 : 0;
+  if (use_autofan == 1) {
+    fan.enableAutoFan();
+  } else {
+    fan.disableAutoFan();
+  }
   uint32_t b1 = EEPROM.read(EEPROM_AUTOFAN_ADDR + 1);
   uint32_t b2 = EEPROM.read(EEPROM_AUTOFAN_ADDR + 2);
-  current_hi_l  = (float)(b1 | b2 << 8) / 10.0;
-  Serial.print("hi_l: ");
-  Serial.println(current_hi_l);
+  fan.highLimit((float)(b1 | b2 << 8) / 10.0);
   b1 = EEPROM.read(EEPROM_AUTOFAN_ADDR + 3);
   b2 = EEPROM.read(EEPROM_AUTOFAN_ADDR + 4);
-  current_lo_l  = (float)(b1 | b2 << 8) / 10.0;
-  Serial.print("lo_l: ");
-  Serial.println(current_lo_l);
+  fan.lowLimit((float)(b1 | b2 << 8) / 10.0);
 
   current_lv_wa = EEPROM.read(EEPROM_WATER_LEVEL_ADDR);
   current_lv_em = EEPROM.read(EEPROM_WATER_LEVEL_ADDR + 1);
@@ -823,7 +809,7 @@ void handleMeasure() {
   json["humidity"] = humidity_val;
   json["water_level"] = level_val;
   json["led"] = light.value();
-  json["fan"] = fan_val;
+  json["fan"] = fan.value();
   Serial.println("got request for measure.");
   json.printTo(message);
   webServer.send(200, "application/json", message);
@@ -842,9 +828,9 @@ void handleConfig() {
   json["on_m"] = light.on_m();
   json["off_h"] = light.off_h();
   json["off_m"] = light.off_m();
-  json["use_autofan"] = use_autofan;
-  json["hi_l"] = current_hi_l;
-  json["lo_l"] = current_lo_l;
+  json["use_autofan"] = fan.enabled();
+  json["hi_l"] = fan.highLimit();
+  json["lo_l"] = fan.lowLimit();
   json["lv_wa"] = current_lv_wa;
   json["lv_em"] = current_lv_em;
   json["use_twitter"] = use_twitter;
@@ -917,38 +903,33 @@ void handleAutofan() {
   float hi_l  = webServer.arg("hi_l").toFloat();
   float lo_l  = webServer.arg("lo_l").toFloat();
 
-  Serial.print("arg_autofan:");
-  Serial.println(arg_autofan);
-  Serial.print("use_autofan:");
-  Serial.println(use_autofan);
-  Serial.print("hi_l:");
-  Serial.println(hi_l);
-  Serial.print("current_hi_l:");
-  Serial.println(current_hi_l);  
-
   int use_t_i;
   use_t_i = (arg_autofan == "true" ? 1: 0);
   int16_t hi_l_i = (int)(hi_l * 10);
   int16_t lo_l_i = (int)(lo_l * 10);
   
-  if (use_t_i != use_autofan) {
-    use_autofan = use_t_i;    
-    EEPROM.write(EEPROM_AUTOFAN_ADDR, char(use_autofan));
+  if (use_t_i != fan.enabled()) {
+    if (use_t_i) {
+      fan.enableAutoFan();
+    } else {
+      fan.disableAutoFan();      
+    }
+    EEPROM.write(EEPROM_AUTOFAN_ADDR, char(use_t_i));
     EEPROM.commit();
   }
 
-  if (hi_l != current_hi_l || lo_l != current_lo_l) {
+  if (hi_l != fan.highLimit() || lo_l != fan.lowLimit()) {
     EEPROM.write(EEPROM_AUTOFAN_ADDR + 1, (hi_l_i       & 0xFF));
     EEPROM.write(EEPROM_AUTOFAN_ADDR + 2, (hi_l_i >> 8  & 0xFF));
     EEPROM.write(EEPROM_AUTOFAN_ADDR + 3, (lo_l_i       & 0xFF));
     EEPROM.write(EEPROM_AUTOFAN_ADDR + 4, (lo_l_i >> 8  & 0xFF));
-    current_hi_l = hi_l;
-    current_lo_l = lo_l;
+    fan.highLimit(hi_l);
+    fan.lowLimit(lo_l);
     EEPROM.commit();
   }
-  json["use_autofan"] = use_autofan;
-  json["hi_l"] = current_hi_l;
-  json["lo_l"] = current_lo_l;
+  json["use_autofan"] = fan.enabled();
+  json["hi_l"] = fan.highLimit();
+  json["lo_l"] = fan.lowLimit();
   json.printTo(message);
   webServer.send(200, "application/json", message);
   digitalWrite(PIN_LED, WEB_LED_OFF);
@@ -1040,16 +1021,15 @@ void handleAction() {
   }
   if (fanstr != "") {
     if (fanstr == "on") {
-      fan_val = 255;
+      fan.value( 255);
     } else if (fanstr == "off") {
-      fan_val = 0;
+      fan.value( 0);
     } else if (fanstr.toInt() >= 0 && fanstr.toInt() <= 255) {
-      fan_val = fanstr.toInt();
+      fan.value(fanstr.toInt());
     }
-    fan.value(fan_val);
   }
   json["led"] = light.value();
-  json["fan"] = fan_val;
+  json["fan"] = fan.value();
 
   json.printTo(message);
   webServer.send(200, "application/json", message);

@@ -53,24 +53,20 @@ int ledLight::control(int hh, int mm) {
     if ((_on_h < _off_h) || (_on_h == _off_h && _on_m <= _off_m )) {
       if ((hh > _on_h || hh >= _on_h && mm >= _on_m) && (hh < _off_h || hh == _off_h && mm < _off_m)) {
         if (value() == 0) {
-          Serial.println("Light turned on.");
           value(255);
         }
       } else {
         if (value() > 0) {
-          Serial.println("Light turned off.");
           value(0);
         }
       }
     } else if ((_on_h > _off_h) || (_on_h == _off_h && _on_m >= _off_m )) {
       if ((hh > _off_h || hh >= _off_h && mm >= _off_m) && (hh < _on_h || hh == _on_h && mm < _on_m)) {
         if (value() > 0) {
-          Serial.println("Light turned off.");
           value(0);
         }
       } else {
         if (value() == 0) {
-          Serial.println("Light turned on.");
           value(255);
         }
       }
