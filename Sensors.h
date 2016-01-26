@@ -9,12 +9,6 @@
 #include "attiny_i2c.h"
 
 #define I2C_PING_ADDRESS       0x26
-#define ATTINY85_LED_ADDRESS   0x27
-
-#define ATTINY85_PIN_LED       0x00
-#define ATTINY85_PIN_DIM_LED   0x80
-#define ATTINY85_PIN_FAN       0x01
-
 #define BME280_ADDRESS   0x76
 #define PIN_1WIRE 2
 

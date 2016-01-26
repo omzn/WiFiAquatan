@@ -6,10 +6,10 @@
 
 class attiny_i2c {
   public:
-    attiny_i2c(uint8_t address,uint8_t pin);
+    attiny_i2c(uint8_t address, uint8_t pin);
     void    value(uint8_t val);
     uint8_t value();
-   private:
+  protected:
     int _address;
     int _pin;
     int _value;

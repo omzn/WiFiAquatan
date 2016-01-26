@@ -19,6 +19,7 @@
 #include "hcsr04_i2c.h"
 #include "bme280_i2c.h"
 #include "attiny_i2c.h"
+#include "ledlight.h"
 
 #define PIN_1WIRE 2
 #define PIN_SDA 4
@@ -36,9 +37,9 @@
 #define I2C_PING_ADDRESS       0x26
 #define ATTINY85_LED_ADDRESS   0x27
 
-#define ATTINY85_PIN_LED       0x00 // 
-#define ATTINY85_PIN_DIM_LED   0x80 //
-#define ATTINY85_PIN_FAN       0x01 // 
+#define ATTINY85_PIN_LED       0x00 
+#define ATTINY85_PIN_DIM_LED   0x80 
+#define ATTINY85_PIN_FAN       0x01 
 
 #define BME280_ADDRESS   0x76
 
@@ -54,19 +55,12 @@
 #define EEPROM_WATER_LEVEL_ADDR  186
 #define EEPROM_LAST_ADDR    188
 
-double airtemperature_val = 0.0;
 double temperature_val = 0.0;
+double airtemperature_val = 0.0;
 double pressure_val = 0.0;
 double humidity_val = 0.0;
 int   level_val = 0;
-int   led_val = 0;
 int   fan_val = 0;
-
-int use_schedule = 0;
-int current_on_h;
-int current_on_m;
-int current_off_h;
-int current_off_m;
 
 int use_autofan = 0;
 float current_hi_l;
@@ -107,7 +101,7 @@ DallasTemperature ds18b20(&ds);
 
 hcsr04_i2c i2cping(I2C_PING_ADDRESS);
 bme280_i2c bme280(BME280_ADDRESS);
-attiny_i2c led(ATTINY85_LED_ADDRESS, ATTINY85_PIN_DIM_LED);
+ledLight   light(ATTINY85_LED_ADDRESS, ATTINY85_PIN_DIM_LED);
 attiny_i2c fan(ATTINY85_LED_ADDRESS, ATTINY85_PIN_FAN);
 
 /***************************************************************
@@ -165,6 +159,7 @@ void setup() {
   delay(10);
   if (restoreConfig()) {
     if (checkConnection()) {
+      WiFi.mode(WIFI_STA);
       if (mdns.begin(sitename.c_str(), WiFi.localIP())) {
         Serial.println("MDNS responder started.");
       }
@@ -179,20 +174,25 @@ void setup() {
       level_val = i2cping.distance();
       startWebServer_normal();
       return;
+    } else {
+      settingMode = true;
     }
+  } else {
+    settingMode = true;
   }
-  settingMode = true;
-  WiFi.mode(WIFI_STA);
-  WiFi.disconnect();
-  delay(100);
-  WiFi.mode(WIFI_AP);
-  WiFi.softAPConfig(apIP, apIP, IPAddress(255, 255, 255, 0));
-  WiFi.softAP(apSSID);
-  dnsServer.start(53, "*", apIP);
-  startWebServer_setting();
-  Serial.print("Starting Access Point at \"");
-  Serial.print(apSSID);
-  Serial.println("\"");
+  if (settingMode == true) {
+    WiFi.mode(WIFI_STA);
+    WiFi.disconnect();
+    delay(100);
+    WiFi.mode(WIFI_AP);
+    WiFi.softAPConfig(apIP, apIP, IPAddress(255, 255, 255, 0));
+    WiFi.softAP(apSSID);
+    dnsServer.start(53, "*", apIP);
+    startWebServer_setting();
+    Serial.print("Starting Access Point at \"");
+    Serial.print(apSSID);
+    Serial.println("\"");
+  }
 }
 
 void loop() {
@@ -249,40 +249,7 @@ void loop() {
     int hh = ((tm[2] & 0xF0) >> 4) * 10 + (tm[2] & 0x0F);
     int mm = ((tm[1] & 0xF0) >> 4) * 10 + (tm[1] & 0x0F);
 
-    if (use_schedule) {
-      if ((current_on_h < current_off_h) || (current_on_h == current_off_h && current_on_m <= current_off_m )) {
-        if ((hh >= current_on_h && mm >= current_on_m) && (hh < current_off_h || hh == current_off_h && mm < current_off_m)) {
-          if (led_val == 0) {
-            Serial.println("Light turned on.");
-            led_val = 255;
-            led.value(led_val);
-            if (use_twitter && !settingMode) {
-              //post_tweet("%5BWiFi-aquatan%5D+%E7%85%A7%E6%98%8E%E3%82%92%E7%82%B9%E7%81%AF%E3%81%97%E3%81%BE%E3%81%97%E3%81%9F%EF%BC%8E");
-            }
-          }
-        } else {
-          if (led_val > 0) {
-            Serial.println("Light turned off.");
-            led_val = 0;
-            led.value(led_val);
-          }
-        }
-      } else if ((current_on_h > current_off_h) || (current_on_h == current_off_h && current_on_m >= current_off_m )) {
-        if ((hh >= current_off_h && mm >= current_off_m) && (hh < current_on_h || hh == current_on_h && mm < current_on_m)) {
-          if (led_val > 0) {
-            Serial.println("Light turned off.");
-            led_val = 0;
-            led.value(led_val);
-          }
-        } else {
-          if (led_val == 0) {
-            Serial.println("Light turned on.");
-            led_val = 255;
-            led.value(led_val);
-          }
-        }
-      }
-    }
+    light.control(hh,mm);
 
     if (use_autofan) {
       if (temperature_val >= current_hi_l && fan_val == 0) {
@@ -448,7 +415,7 @@ void OLEDshowMeasure() {
 void OLEDshowLedStatus() {
   oled.setCursor(0, 16);
   oled.print("LED");
-  if (led_val > 0) {
+  if (light.value() > 0) {
     oled.fillCircle(44, 28, 12, WHITE);
     oled.setCursor(39, 25);
     oled.setTextColor(BLACK, WHITE); // 'inverted' text
@@ -464,11 +431,11 @@ void OLEDshowLedStatus() {
   }
   oled.setCursor(0, 40);
   oled.println("Schedule");
-  if (!use_schedule) {
+  if (!light.enabled()) {
     oled.print("   none   ");
   } else {
     char buf[10];
-    sprintf(buf, "%02d%02d-%02d%02d", current_on_h, current_on_m, current_off_h, current_off_m);
+    sprintf(buf, "%02d%02d-%02d%02d", light.on_h(), light.on_m(), light.off_h(), light.off_m());
     oled.print(buf);
   }
 }
@@ -520,11 +487,17 @@ boolean restoreConfig() {
   String ssid = "";
   String pass = "";
 
-  use_schedule  = EEPROM.read(EEPROM_SCHEDULE_ADDR) == 1 ? 1 : 0;
-  current_on_h  = EEPROM.read(EEPROM_SCHEDULE_ADDR + 1);
-  current_on_m  = EEPROM.read(EEPROM_SCHEDULE_ADDR + 2);
-  current_off_h = EEPROM.read(EEPROM_SCHEDULE_ADDR + 3);
-  current_off_m = EEPROM.read(EEPROM_SCHEDULE_ADDR + 4);
+  int use_schedule  = EEPROM.read(EEPROM_SCHEDULE_ADDR) == 1 ? 1 : 0;
+  if (use_schedule == 1) {
+    light.enableSchedule();
+  } else {
+    light.disableSchedule();
+  }
+  int e_on_h  = EEPROM.read(EEPROM_SCHEDULE_ADDR + 1);
+  int e_on_m  = EEPROM.read(EEPROM_SCHEDULE_ADDR + 2);
+  int e_off_h = EEPROM.read(EEPROM_SCHEDULE_ADDR + 3);
+  int e_off_m = EEPROM.read(EEPROM_SCHEDULE_ADDR + 4);
+  light.setSchedule(e_on_h,e_on_m,e_off_h,e_off_m);
 
   use_autofan = EEPROM.read(EEPROM_AUTOFAN_ADDR) == 1 ? 1 : 0;
   uint32_t b1 = EEPROM.read(EEPROM_AUTOFAN_ADDR + 1);
@@ -849,7 +822,7 @@ void handleMeasure() {
   json["pressure"] = pressure_val;
   json["humidity"] = humidity_val;
   json["water_level"] = level_val;
-  json["led"] = led_val;
+  json["led"] = light.value();
   json["fan"] = fan_val;
   Serial.println("got request for measure.");
   json.printTo(message);
@@ -864,11 +837,11 @@ void handleConfig() {
   DynamicJsonBuffer jsonBuffer;
   JsonObject& json = jsonBuffer.createObject();
 
-  json["use_schedule"] = use_schedule;
-  json["on_h"] = current_on_h;
-  json["on_m"] = current_on_m;
-  json["off_h"] = current_off_h;
-  json["off_m"] = current_off_m;
+  json["use_schedule"] = light.enabled();
+  json["on_h"] = light.on_h();
+  json["on_m"] = light.on_m();
+  json["off_h"] = light.off_h();
+  json["off_m"] = light.off_m();
   json["use_autofan"] = use_autofan;
   json["hi_l"] = current_hi_l;
   json["lo_l"] = current_lo_l;
@@ -895,45 +868,40 @@ void handleSchedule() {
   int off_h = webServer.arg("off_h").toInt();
   int off_m = webServer.arg("off_m").toInt();
 
-  Serial.print("use_s:");
-  Serial.println(use_s);
-  Serial.print("use_schedule:");
-  Serial.println(use_schedule);
-  Serial.print("on_h:");
-  Serial.println(on_h);
-  Serial.print("current_on_h:");
-  Serial.println(current_on_h);
-  
   int use_s_i;
   use_s_i = (use_s == "true" ? 1: 0);
   
-  if (use_s_i != use_schedule) {
-    use_schedule = use_s_i;    
-    EEPROM.write(EEPROM_SCHEDULE_ADDR, char(use_schedule));
+  if (use_s_i != light.enabled()) {
+    if (use_s_i) {
+      light.enableSchedule();
+    } else {
+      light.disableSchedule();
+    }
+    EEPROM.write(EEPROM_SCHEDULE_ADDR, char(use_s_i));
     EEPROM.commit();
   }
 
   if (on_h >= 0 && on_h <= 24 && on_m >= 0 && on_m <= 59 &&
-      (on_h != current_on_h || on_m != current_on_m)) {
+      (on_h != light.on_h() || on_m != light.on_m())) {
     EEPROM.write(EEPROM_SCHEDULE_ADDR + 1, char(on_h));
     EEPROM.write(EEPROM_SCHEDULE_ADDR + 2, char(on_m));
-    current_on_h = on_h;
-    current_on_m = on_m;
+    light.on_h(on_h);
+    light.on_m(on_m);
     EEPROM.commit();
   }
   if (off_h >= 0 && off_h <= 24 && off_m >= 0 && off_m <= 59 &&
-      (off_h != current_off_h || off_m != current_off_m) ) {
+      (off_h != light.off_h() || off_m != light.off_m()) ) {
     EEPROM.write(EEPROM_SCHEDULE_ADDR + 3, char(off_h));
     EEPROM.write(EEPROM_SCHEDULE_ADDR + 4, char(off_m));
-    current_off_h = off_h;
-    current_off_m = off_m;
+    light.off_h(off_h);
+    light.off_m(off_m);
     EEPROM.commit();
   }
-  json["use_schedule"] = use_schedule;
-  json["on_h"] = current_on_h;
-  json["on_m"] = current_on_m;
-  json["off_h"] = current_off_h;
-  json["off_m"] = current_off_m;
+  json["use_schedule"] = light.enabled();
+  json["on_h"] = light.on_h();
+  json["on_m"] = light.on_m();
+  json["off_h"] = light.off_h();
+  json["off_m"] = light.off_m();
   json.printTo(message);
   webServer.send(200, "application/json", message);
   digitalWrite(PIN_LED, WEB_LED_OFF);
@@ -1063,13 +1031,12 @@ void handleAction() {
 
   if (ledstr != "") {
     if (ledstr == "on") {
-      led_val = 255;
+      light.value(255);
     } else if (ledstr == "off") {
-      led_val = 0;
+      light.value(0);
     } else if (ledstr.toInt() >= 0 && ledstr.toInt() <= 255) {
-      led_val = ledstr.toInt();
+      light.value(ledstr.toInt());
     }
-    led.value(led_val);
   }
   if (fanstr != "") {
     if (fanstr == "on") {
@@ -1081,7 +1048,7 @@ void handleAction() {
     }
     fan.value(fan_val);
   }
-  json["led"] = led_val;
+  json["led"] = light.value();
   json["fan"] = fan_val;
 
   json.printTo(message);

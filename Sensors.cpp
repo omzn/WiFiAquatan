@@ -3,8 +3,6 @@
 Sensors::Sensors() {
   ds = new OneWire(PIN_1WIRE);
   ds18b20 = new DallasTemperature(ds);
-  led = new attiny_i2c(ATTINY85_LED_ADDRESS, ATTINY85_PIN_DIM_LED);
-  fan = new attiny_i2c(ATTINY85_LED_ADDRESS, ATTINY85_PIN_FAN);
   i2cping = new hcsr04_i2c(I2C_PING_ADDRESS);
   bme280  = new bme280_i2c(BME280_ADDRESS);
 
