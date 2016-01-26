@@ -6,7 +6,6 @@
 
 #include "hcsr04_i2c.h"
 #include "bme280_i2c.h"
-#include "attiny_i2c.h"
 
 #define I2C_PING_ADDRESS       0x26
 #define BME280_ADDRESS   0x76
@@ -15,28 +14,33 @@
 class Sensors {
   public:
     Sensors();
+    void begin();
     void readData();
-    double getWaterTemp();
-    double getAirTemp();
-    double getPressure();
-    double getHumidity();
+    float getWaterTemp();
+    float getAirTemp();
+    float getPressure();
+    float getHumidity();
     int    getWaterLevel();
     void   logData();
-    
+    float  getWaterTempLog(int id);
+    float  getAirTempLog(int id);
+    float  getPressureLog(int id);
+    float  getHumidityLog(int id);
+
   private:
     OneWire *ds;
     DallasTemperature *ds18b20;
-
     hcsr04_i2c *i2cping;
     bme280_i2c *bme280;
-    attiny_i2c *led;
-    attiny_i2c *fan;
 
-    double waterTemp = 0.0;
-    double airTemp = 0.0;
-    double pressure = 0.0;
-    double humidity = 0.0;
+    float waterTemp = 0.0;
+    float airTemp = 0.0;
+    float pressure = 0.0;
+    float humidity = 0.0;
     int waterLevel = 0;
+
+    int waterLevelLimitWarn = 0;
+    int waterLevelLimitEmerge = 0;
 
     int log_wd = 0;
     float waterTempLog[100];

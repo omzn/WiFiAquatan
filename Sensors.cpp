@@ -5,10 +5,11 @@ Sensors::Sensors() {
   ds18b20 = new DallasTemperature(ds);
   i2cping = new hcsr04_i2c(I2C_PING_ADDRESS);
   bme280  = new bme280_i2c(BME280_ADDRESS);
+}
 
+void Sensors::begin() {
   ds18b20->begin();
   bme280->begin();
-
 }
 
 void Sensors::readData() {
@@ -31,23 +32,40 @@ void Sensors::logData() {
   log_wd %= 96;
 }
 
-double Sensors::getWaterTemp() {
+float Sensors::getWaterTemp() {
   return waterTemp;
 }
 
-double Sensors::getAirTemp() {
+float Sensors::getAirTemp() {
   return airTemp;
 }
 
-double Sensors::getPressure() {
+float Sensors::getPressure() {
   return pressure;
 }
 
-double Sensors::getHumidity() {
+float Sensors::getHumidity() {
   return humidity;
 }
 
 int Sensors::getWaterLevel() {
   return waterLevel;
+}
+
+// get...Log() method returns most recent log data as index 0
+float Sensors::getWaterTempLog(int id) {
+  return waterTempLog[(id + log_wd) % 96];
+}
+
+float Sensors::getAirTemp(int id) {
+  return airTempLog[(id + log_wd) % 96];
+}
+
+float Sensors::getPressure(int id) {
+  return pressureLog[(id + log_wd) % 96];
+}
+
+float Sensors::getHumidity(int id) {
+  return humidityLog[(id + log_wd) % 96];
 }
 

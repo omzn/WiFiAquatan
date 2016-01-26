@@ -18,7 +18,6 @@
 
 #include "hcsr04_i2c.h"
 #include "bme280_i2c.h"
-#include "attiny_i2c.h"
 #include "ledlight.h"
 #include "fan.h"
 
@@ -65,6 +64,12 @@ int   level_val = 0;
 int current_lv_wa = 0;
 int current_lv_em = 0;
 
+int log_wd = 0;
+float wtemp_log[100];
+float atemp_log[100];
+float press_log[100];
+float humid_log[100];
+
 int use_twitter = 0;
 String stewgate_host = "stewgate-u.appspot.com";
 String stewgate_token = "";
@@ -78,12 +83,6 @@ volatile boolean rtcint;
 int timer_count = 0;
 int average_count = 0;
 
-int log_wd = 0;
-float wtemp_log[100];
-float atemp_log[100];
-float press_log[100];
-float humid_log[100];
-
 volatile uint8_t oled_page = 0;
 volatile boolean oled_changed = false;
 
@@ -92,13 +91,15 @@ DNSServer dnsServer;
 ESP8266WebServer webServer(80);
 MDNSResponder mdns;
 Adafruit_SSD1306 oled;
+
 OneWire ds(PIN_1WIRE);
 DallasTemperature ds18b20(&ds);
-
 hcsr04_i2c i2cping(I2C_PING_ADDRESS);
 bme280_i2c bme280(BME280_ADDRESS);
+
 ledLight   light(ATTINY85_LED_ADDRESS, ATTINY85_PIN_DIM_LED);
 fanCooler  fan(ATTINY85_LED_ADDRESS, ATTINY85_PIN_FAN);
+
 
 /***************************************************************
  * interrupt handlers
