@@ -26,6 +26,11 @@ class Sensors {
     float  getAirTempLog(int id);
     float  getPressureLog(int id);
     float  getHumidityLog(int id);
+    void waterLevelLimits(int w,int e);
+    int waterLevelLimitWarn();
+    int waterLevelLimitEmerge();
+    void waterLevelLimitWarn(int v);
+    void waterLevelLimitEmerge(int v);
 
   private:
     OneWire *ds;
@@ -39,8 +44,8 @@ class Sensors {
     float humidity = 0.0;
     int waterLevel = 0;
 
-    int waterLevelLimitWarn = 0;
-    int waterLevelLimitEmerge = 0;
+    int _waterLevelLimitWarn = 0;
+    int _waterLevelLimitEmerge = 0;
 
     int log_wd = 0;
     float waterTempLog[100];

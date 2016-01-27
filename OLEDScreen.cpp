@@ -1,15 +1,17 @@
 #include "OLEDScreen.h"
 
-OLEDScreen::OLEDScreen(Sensors *s) {
+OLEDScreen::OLEDScreen(Sensors *s, ledLight *l, fanCooler *f) {
   page = 0;
   changed = true;
   sensors = s;
+  light = l;
+  fan = f;
 }
 
 void OLEDScreen::incPage() {
   page++;
-  page%=NUM_PAGES;
-  changed=true;
+  page %= NUM_PAGES;
+  changed = true;
 }
 
 void OLEDScreen::drawPage(int page_num) {
@@ -17,12 +19,12 @@ void OLEDScreen::drawPage(int page_num) {
 }
 
 void OLEDScreen::drawLogo(int x, int y) {
-    drawBitmap(x, y, aquatan_logo, 32, 32, WHITE);
+  drawBitmap(x, y, aquatan_logo, 32, 32, WHITE);
 }
 
 void OLEDScreen::drawHeader(String msg) {
-  fillRect(0, 0, 127, 15, WHITE);  
-  setCursor(127-(msg.length() * 3), 3);
+  fillRect(0, 0, 127, 15, WHITE);
+  setCursor(127 - (msg.length() * 3), 3);
   setTextColor(BLACK, WHITE);
   print(msg);
   setTextColor(WHITE, BLACK);

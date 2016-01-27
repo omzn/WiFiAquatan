@@ -16,8 +16,7 @@
 #include "OLED_pattern.h"
 #include "Webpages.h"
 
-#include "hcsr04_i2c.h"
-#include "bme280_i2c.h"
+#include "sensors.h"
 #include "ledlight.h"
 #include "fan.h"
 
@@ -55,21 +54,6 @@
 #define EEPROM_WATER_LEVEL_ADDR  186
 #define EEPROM_LAST_ADDR    188
 
-double temperature_val = 0.0;
-double airtemperature_val = 0.0;
-double pressure_val = 0.0;
-double humidity_val = 0.0;
-int   level_val = 0;
-
-int current_lv_wa = 0;
-int current_lv_em = 0;
-
-int log_wd = 0;
-float wtemp_log[100];
-float atemp_log[100];
-float press_log[100];
-float humid_log[100];
-
 int use_twitter = 0;
 String stewgate_host = "stewgate-u.appspot.com";
 String stewgate_token = "";
@@ -92,14 +76,11 @@ ESP8266WebServer webServer(80);
 MDNSResponder mdns;
 Adafruit_SSD1306 oled;
 
-OneWire ds(PIN_1WIRE);
-DallasTemperature ds18b20(&ds);
-hcsr04_i2c i2cping(I2C_PING_ADDRESS);
-bme280_i2c bme280(BME280_ADDRESS);
-
+Sensors sensors;
 ledLight   light(ATTINY85_LED_ADDRESS, ATTINY85_PIN_DIM_LED);
 fanCooler  fan(ATTINY85_LED_ADDRESS, ATTINY85_PIN_FAN);
 
+//OLEDScreen oled(&sensors,&light,&fan);
 
 /***************************************************************
  * interrupt handlers
@@ -135,8 +116,7 @@ void setup() {
   Wire.begin(PIN_SDA, PIN_SCL);
   RTC.begin(16, 1, 1, 0, 0, 0, 0);
 
-  ds18b20.begin();
-  bme280.begin();
+  sensors.begin();
 
   rtcint = 0;
   pinMode(PIN_RTC_INT, INPUT_PULLUP);
@@ -162,13 +142,7 @@ void setup() {
       }
       settingMode = false;
 
-      ds18b20.requestTemperatures();
-      temperature_val = ds18b20.getTempCByIndex(0);
-      bme280.read_data();
-      airtemperature_val = bme280.temperature();
-      pressure_val = bme280.pressure();
-      humidity_val = bme280.humidity();
-      level_val = i2cping.distance();
+      sensors.readData();
       startWebServer_normal();
       return;
     } else {
@@ -222,32 +196,21 @@ void loop() {
     timer_count++;
     //    if (!settingMode && timer_count >= 30) {
     if (!settingMode) {
-      ds18b20.requestTemperatures();
-      temperature_val = ds18b20.getTempCByIndex(0);
-      bme280.read_data();
-      airtemperature_val = bme280.temperature();
-      pressure_val = bme280.pressure();
-      humidity_val = bme280.humidity();
-      level_val    = i2cping.distance();
+      sensors.readData();
       OLEDdrawPage();
     }
     oled.display();       // Refresh the display
     timer_count %= 900;
 
     if (timer_count == 1) {
-      wtemp_log[log_wd] = temperature_val;
-      atemp_log[log_wd] = airtemperature_val;
-      press_log[log_wd] = pressure_val;
-      humid_log[log_wd] = humidity_val;
-      log_wd++;
-      log_wd %= 96;
+      sensors.logData();
     }
 
     int hh = ((tm[2] & 0xF0) >> 4) * 10 + (tm[2] & 0x0F);
     int mm = ((tm[1] & 0xF0) >> 4) * 10 + (tm[1] & 0x0F);
 
     light.control(hh,mm);
-    fan.control(temperature_val);
+    fan.control(sensors.getWaterTemp());
 
     delay(10);
     rtcint = 0;
@@ -322,11 +285,6 @@ void OLEDdrawPage() {
  * 55 |____________
  */
 void OLEDshowWTGraph() {
-  static int prev_log_wd = 0;
-  if (prev_log_wd != log_wd) {
-    oled.fillRect(14, 55, 112, 55, BLACK);
-    prev_log_wd = log_wd;
-  }
   oled.setCursor(0, 16);
   oled.print("W.Temp");
   oled.drawLine(14, 25, 14, 55, WHITE);
@@ -343,7 +301,7 @@ void OLEDshowWTGraph() {
   oled.setCursor(0, 27);
   oled.print("30");
   for (int i = 0; i < 96; i++) {
-    int temp = (int)wtemp_log[(i + log_wd) % 96];
+    int temp = (int)sensors.getWaterTempLog(i);
     if (temp > 10 && temp < 40) {
       oled.drawPixel(16 + (95 - i), 51 + (10 - temp), WHITE);
     }
@@ -351,11 +309,6 @@ void OLEDshowWTGraph() {
 }
 
 void OLEDshowATGraph() {
-  static int prev_log_wd = 0;
-  if (prev_log_wd != log_wd) {
-    oled.fillRect(14, 55, 112, 55, BLACK);
-    prev_log_wd = log_wd;
-  }
   oled.setCursor(0, 16);
   oled.print("A.Temp");
   oled.drawLine(14, 25, 14, 55, WHITE);
@@ -372,7 +325,7 @@ void OLEDshowATGraph() {
   oled.setCursor(0, 27);
   oled.print("30");
   for (int i = 0; i < 96; i++) {
-    int temp = (int)atemp_log[(i + log_wd) % 96];
+    int temp = (int)sensors.getAirTempLog(i);
     if (temp > 10 && temp < 40) {
       oled.drawPixel(16 + (95 - i), 51 + (10 - temp), WHITE);
     }
@@ -381,20 +334,20 @@ void OLEDshowATGraph() {
 void OLEDshowMeasure() {
   oled.setCursor(0, 16);
   oled.print("A.Temp:");
-  oled.print(airtemperature_val, 1);
+  oled.print(sensors.getAirTemp(), 1);
   oled.println(" 'C");
   oled.print("W.Temp:");
-  oled.print(temperature_val, 1);
+  oled.print(sensors.getWaterTemp(), 1);
   oled.println(" 'C");
   oled.print("Press: ");
-  oled.print(pressure_val, 0);
+  oled.print(sensors.getPressure(), 0);
   oled.println(" hPa");
   oled.print("Humid: ");
-  oled.print(humidity_val, 1);
+  oled.print(sensors.getHumidity(), 1);
   oled.println(" %");
   oled.print("W.Lv:  ");
   char str[10];
-  sprintf(str, "%3d cm", level_val);
+  sprintf(str, "%3d cm", sensors.getWaterLevel());
   oled.print(str);
 }
 
@@ -498,9 +451,11 @@ boolean restoreConfig() {
   b2 = EEPROM.read(EEPROM_AUTOFAN_ADDR + 4);
   fan.lowLimit((float)(b1 | b2 << 8) / 10.0);
 
-  current_lv_wa = EEPROM.read(EEPROM_WATER_LEVEL_ADDR);
-  current_lv_em = EEPROM.read(EEPROM_WATER_LEVEL_ADDR + 1);
-
+  int lv_wa = EEPROM.read(EEPROM_WATER_LEVEL_ADDR);
+  int lv_em = EEPROM.read(EEPROM_WATER_LEVEL_ADDR + 1);
+  sensors.waterLevelLimitWarn(lv_wa);
+  sensors.waterLevelLimitEmerge(lv_em);
+  
   use_twitter  = EEPROM.read(EEPROM_TWITTER_CONFIG_ADDR) == 1 ? 1 : 0;
   if (EEPROM.read(EEPROM_TWITTER_TOKEN_ADDR) != 0) {
     stewgate_token = "";
@@ -804,11 +759,11 @@ void handleMeasure() {
   DynamicJsonBuffer jsonBuffer;
   JsonObject& json = jsonBuffer.createObject();
 
-  json["atemp"] = airtemperature_val;
-  json["temp"] =  temperature_val;
-  json["pressure"] = pressure_val;
-  json["humidity"] = humidity_val;
-  json["water_level"] = level_val;
+  json["atemp"] = sensors.getAirTemp();
+  json["temp"] =  sensors.getWaterTemp();
+  json["pressure"] = sensors.getPressure();
+  json["humidity"] = sensors.getHumidity();
+  json["water_level"] = sensors.getWaterLevel();
   json["led"] = light.value();
   json["fan"] = fan.value();
   Serial.println("got request for measure.");
@@ -832,8 +787,8 @@ void handleConfig() {
   json["use_autofan"] = fan.enabled();
   json["hi_l"] = fan.highLimit();
   json["lo_l"] = fan.lowLimit();
-  json["lv_wa"] = current_lv_wa;
-  json["lv_em"] = current_lv_em;
+  json["lv_wa"] = sensors.waterLevelLimitWarn();
+  json["lv_em"] = sensors.waterLevelLimitEmerge();
   json["use_twitter"] = use_twitter;
   json["stew_token"] = stewgate_token;
 
@@ -950,14 +905,11 @@ void handleWaterLevel() {
   Serial.print("lv_em:");
   Serial.println(lv_em);  
 
-  if (lv_wa != current_lv_wa || lv_em != current_lv_em) {
-    i2cping.set_levels(lv_wa,lv_em);
+  if (lv_wa != sensors.waterLevelLimitWarn() || lv_em != sensors.waterLevelLimitEmerge()) {
+    sensors.waterLevelLimits(lv_wa,lv_em);
     EEPROM.write(EEPROM_WATER_LEVEL_ADDR + 0, lv_wa);
     EEPROM.write(EEPROM_WATER_LEVEL_ADDR + 1, lv_em);
     EEPROM.commit();
-
-    current_lv_wa = lv_wa;
-    current_lv_em = lv_em;
   }
   json["lv_wa"] = lv_wa;
   json["lv_em"] = lv_em;

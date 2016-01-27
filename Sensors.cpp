@@ -52,20 +52,43 @@ int Sensors::getWaterLevel() {
   return waterLevel;
 }
 
+void Sensors::waterLevelLimits(int w,int e) {
+  _waterLevelLimitWarn = w;
+  _waterLevelLimitEmerge = e;  
+  i2cping->set_levels(w,e);
+}
+
+int Sensors::waterLevelLimitWarn() {
+  return _waterLevelLimitWarn;
+}
+
+void Sensors::waterLevelLimitWarn(int v) {
+  _waterLevelLimitWarn = v;
+}
+
+int Sensors::waterLevelLimitEmerge() {
+  return _waterLevelLimitEmerge;
+}
+
+void Sensors::waterLevelLimitEmerge(int v) {
+  _waterLevelLimitEmerge = v;
+}
+
+
 // get...Log() method returns most recent log data as index 0
 float Sensors::getWaterTempLog(int id) {
   return waterTempLog[(id + log_wd) % 96];
 }
 
-float Sensors::getAirTemp(int id) {
+float Sensors::getAirTempLog(int id) {
   return airTempLog[(id + log_wd) % 96];
 }
 
-float Sensors::getPressure(int id) {
+float Sensors::getPressureLog(int id) {
   return pressureLog[(id + log_wd) % 96];
 }
 
-float Sensors::getHumidity(int id) {
+float Sensors::getHumidityLog(int id) {
   return humidityLog[(id + log_wd) % 96];
 }
 
