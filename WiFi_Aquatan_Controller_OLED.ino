@@ -27,8 +27,9 @@
 #include "sensors.h"
 #include "ledlight.h"
 #include "fan.h"
-//#include "networkinfo.h"
 #include "OLEDScreen.h"
+
+//#define DEBUG 1
 
 #define PIN_1WIRE 2
 #define PIN_SDA 4
@@ -61,6 +62,9 @@
 #define EEPROM_LAST_ADDR    188
 
 #define DEFAULT_SITE_NAME "aquamon"
+
+#define PIXELS (6)
+#define COLOR_MAX (255)
 
 int use_twitter = 0;
 String stewgate_host = "stewgate-u.appspot.com";
@@ -105,7 +109,9 @@ void BTNHandler() {
  */
 
 void setup() {
+#ifdef DEBUG
   Serial.begin(115200);
+#endif
   EEPROM.begin(512);
   delay(10);
 
@@ -118,7 +124,7 @@ void setup() {
 
   sensors.begin();
   sensors.siteName(DEFAULT_SITE_NAME);
-  
+
   RTC.begin(16, 1, 1, 0, 0, 0, 0);
   rtcint = 0;
   RTC.setTimer(RTC_TIMER_BASE_1S, 1); // Timer 1 Hz
@@ -131,7 +137,7 @@ void setup() {
   digitalWrite(PIN_BTN, HIGH);
   attachInterrupt(PIN_BTN, BTNHandler, FALLING);
 
-  oled.begin(SSD1306_SWITCHCAPVCC,0x3C);         // Initialize the OLED
+  oled.begin(SSD1306_SWITCHCAPVCC, 0x3C);        // Initialize the OLED
   oled.display();       // Display what's in the buffer (splashscreen)
   oled.setTextSize(1);  // Set text size 1
   oled.setTextColor(WHITE, BLACK);
@@ -141,7 +147,9 @@ void setup() {
     if (checkConnection()) {
       WiFi.mode(WIFI_STA);
       if (mdns.begin(sensors.siteName().c_str(), WiFi.localIP())) {
+#ifdef DEBUG
         Serial.println("MDNS responder started.");
+#endif
       }
       settingMode = false;
 
@@ -164,9 +172,11 @@ void setup() {
     WiFi.softAP(apSSID);
     dnsServer.start(53, "*", apIP);
     startWebServer_setting();
+#ifdef DEBUG
     Serial.print("Starting Access Point at \"");
     Serial.print(apSSID);
     Serial.println("\"");
+#endif
   }
 }
 
@@ -217,7 +227,9 @@ void loop() {
  ***************************************************************/
 
 boolean restoreConfig() {
+#ifdef DEBUG
   Serial.println("Reading EEPROM...");
+#endif
   String ssid = "";
   String pass = "";
 
@@ -226,7 +238,7 @@ boolean restoreConfig() {
     for (int i = 0; i < EEPROM_LAST_ADDR; ++i) {
       EEPROM.write(i, 0);
     }
-    EEPROM.commit();    
+    EEPROM.commit();
   }
 
   int use_schedule  = EEPROM.read(EEPROM_SCHEDULE_ADDR) == 1 ? 1 : 0;
@@ -267,20 +279,15 @@ boolean restoreConfig() {
       byte c = EEPROM.read(EEPROM_TWITTER_TOKEN_ADDR + i);
       stewgate_token += char(c);
     }
-    Serial.println("restored token");
   }
 
   if (EEPROM.read(EEPROM_SSID_ADDR) != 0) {
     for (int i = EEPROM_SSID_ADDR; i < EEPROM_SSID_ADDR + 32; ++i) {
       ssid += char(EEPROM.read(i));
     }
-    Serial.print("SSID: ");
-    Serial.println(ssid);
     for (int i = EEPROM_PASS_ADDR; i < EEPROM_PASS_ADDR + 64; ++i) {
       pass += char(EEPROM.read(i));
     }
-    Serial.print("Password: ");
-    Serial.println(pass);
     WiFi.begin(ssid.c_str(), pass.c_str());
 
     if (EEPROM.read(EEPROM_MDNS_ADDR) != 0) {
@@ -293,13 +300,11 @@ boolean restoreConfig() {
         sitename += char(c);
       }
       sensors.siteName(sitename);
-      Serial.println("restored sitename");
     }
 
     return true;
   }
   else {
-    Serial.println("Config not found.");
     return false;
   }
 }
@@ -310,18 +315,17 @@ boolean restoreConfig() {
 
 boolean checkConnection() {
   int count = 0;
-  Serial.print("Waiting for Wi-Fi connection");
   while ( count < 40 ) {
     if (WiFi.status() == WL_CONNECTED) {
-      Serial.println();
-      Serial.println("Connected!");
       return (true);
     }
     delay(500);
+#ifdef DEBUG
     Serial.print(".");
+#endif
     count++;
   }
-  Serial.println("Timed out.");
+  //  Serial.println("Timed out.");
   return false;
 }
 
@@ -330,12 +334,9 @@ boolean checkConnection() {
  ***********************************************************/
 
 bool post_tweet(String msg) {
-  Serial.print("connecting to ");
-  Serial.println(stewgate_host);
 
   WiFiClient client;
   if (!client.connect(stewgate_host.c_str(), 80)) {
-    Serial.println("connection failed");
     return false;
   }
 
@@ -359,12 +360,7 @@ bool post_tweet(String msg) {
 
   while (client.available()) {
     String line = client.readStringUntil('\r');
-    Serial.print(line);
   }
-
-  Serial.println();
-  Serial.println("closing connection");
-
   return true;
 }
 
@@ -382,8 +378,10 @@ void startWebServer_setting() {
   oled.display();       // Refresh the display
   delay(10);
 
+#ifdef DEBUG
   Serial.print("Starting Web Server at ");
   Serial.println(WiFi.softAPIP());
+#endif
   webServer.on("/setap", []() {
     // 時刻を設定
     RTC.sTime(webServer.arg("year").toInt() - 100,
@@ -398,19 +396,11 @@ void startWebServer_setting() {
       EEPROM.write(i, 0);
     }
     String ssid = urlDecode(webServer.arg("ssid"));
-    Serial.print("SSID: ");
-    Serial.println(ssid);
     String pass = urlDecode(webServer.arg("pass"));
-    Serial.print("Password: ");
-    Serial.println(pass);
     String site = urlDecode(webServer.arg("site"));
-    Serial.print("Sitename: ");
-    Serial.println(site);
-    Serial.println("Writing SSID to EEPROM...");
     for (int i = 0; i < ssid.length(); ++i) {
       EEPROM.write(EEPROM_SSID_ADDR + i, ssid[i]);
     }
-    Serial.println("Writing Password to EEPROM...");
     for (int i = 0; i < pass.length(); ++i) {
       EEPROM.write(EEPROM_PASS_ADDR + i, pass[i]);
     }
@@ -418,13 +408,11 @@ void startWebServer_setting() {
       for (int i = EEPROM_MDNS_ADDR; i < EEPROM_MDNS_ADDR + 32; ++i) {
         EEPROM.write(i, 0);
       }
-      Serial.println("Writing Sitename to EEPROM...");
       for (int i = 0; i < site.length(); ++i) {
         EEPROM.write(EEPROM_MDNS_ADDR + i, site[i]);
       }
     }
     EEPROM.commit();
-    Serial.println("Write EEPROM done!");
     String s = "<h2>Setup complete</h2> <p>Device will be connected to \"";
     s += ssid;
     s += "\" after the restart.</p><p>Your computer also need to re-connect to \"";
@@ -492,8 +480,10 @@ void startWebServer_normal() {
   oled.display();       // Refresh the display
   
   delay(10);
+#ifdef DEBUG
   Serial.print("Starting Web Server at ");
   Serial.println(WiFi.localIP());
+#endif
   webServer.on("/reset", []() {
     for (int i = 0; i < EEPROM_LAST_ADDR; ++i) {
       EEPROM.write(i, 0);
@@ -532,7 +522,6 @@ void startWebServer_normal() {
 }
 
 void handleRoot() {
-  Serial.println("got request for /");
   digitalWrite(PIN_LED, WEB_LED_ON);
   webServer.send_P(200, "text/html", page_p);
   digitalWrite(PIN_LED, WEB_LED_OFF);
@@ -557,7 +546,6 @@ void handleMeasure() {
   json["water_level"] = sensors.getWaterLevel();
   json["led"] = light.value();
   json["fan"] = fan.value();
-  Serial.println("got request for measure.");
   json.printTo(message);
   webServer.send(200, "application/json", message);
     digitalWrite(PIN_LED, WEB_LED_OFF);
@@ -583,7 +571,6 @@ void handleConfig() {
   json["use_twitter"] = use_twitter;
   json["stew_token"] = stewgate_token;
 
-  Serial.println("got request for config.");
   json.printTo(message);
   webServer.send(200, "application/json", message);
   digitalWrite(PIN_LED, WEB_LED_OFF);
@@ -691,11 +678,6 @@ void handleWaterLevel() {
   int8_t lv_wa  = webServer.arg("lv_wa").toInt();
   int8_t lv_em  = webServer.arg("lv_em").toInt();
 
-  Serial.print("lv_wa:");
-  Serial.println(lv_wa);
-  Serial.print("lv_em:");
-  Serial.println(lv_em);  
-
   if (lv_wa != sensors.waterLevelLimitWarn() || lv_em != sensors.waterLevelLimitEmerge()) {
     sensors.waterLevelLimits(lv_wa,lv_em);
     EEPROM.write(EEPROM_WATER_LEVEL_ADDR + 0, lv_wa);
@@ -717,11 +699,6 @@ void handleTwitconf() {
 
   String use_tw_s = webServer.arg("use_twitter") ;
   String token  = webServer.arg("stew_token");
-
-  Serial.print("use_twitter:");
-  Serial.println(use_tw_s);
-  Serial.print("stew_token:");
-  Serial.println(token);
 
   int use_tw_i;
   use_tw_i = (use_tw_s == "true" ? 1: 0);
@@ -772,6 +749,7 @@ void handleAction() {
       fan.value(fanstr.toInt());
     }
   }
+
   json["led"] = light.value();
   json["fan"] = fan.value();
 
