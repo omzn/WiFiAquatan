@@ -30,13 +30,27 @@
           <h2>Water Temperature</h2>
 	  
           <span class="at-val">
-            <div id="wt">25.5</div><span>&deg;C</span>
+            <div id="wt">40.0</div><span>&deg;C</span>
           </span>
         </div>
 	
       </div>
     </div>
-    
+
+    <div class="a-t pure-g">
+    <div id="atemp" class="pure-u-1 pure-u-md-1-3">
+      <div class="at at-air">
+        <div class="at-header">
+          <h2>Air Temperature</h2>
+	  
+          <span class="at-val">
+            <div id="at">40.0</div><span>&deg;C</span>
+          </span>
+        </div>
+	
+      </div>
+    </div>
+
     <div id="pres" class="pure-u-1 pure-u-md-1-3">
       <div class="at at-pressure">
         <div class="at-header">
@@ -215,7 +229,6 @@
 		    <label for="lv_em">Emergency</label>
 		    <input id="lv_em" class="pure-u-20-24" type="text" placeholder="Level (cm)">
 		  </div>
-		  
 		</div>
 		
 		<button id="wsub" type="submit" class="pure-button pure-button-primary">Submit</button>
@@ -372,6 +385,7 @@ $('#lv_em').val(json.lv_em);
 function upd() {
 $.getJSON('/measure',function(json){
 $('#wt').html(json.temp.toFixed(1).toString());
+$('#at').html(json.atemp.toFixed(1).toString());
 $('#ap').html(json.pressure.toFixed().toString());
 $('#wl').html(json.water_level.toString());
 $('#hu').html(json.humidity.toFixed(1).toString());

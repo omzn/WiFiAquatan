@@ -1,3 +1,12 @@
+/*
+ * WiFi Aquatan Controller (China OLED version) ***
+ *   RTC:  RTC-8564NB
+ *   Temp: DS18B20
+ *   Env:  BME280
+ *   OLED: 0.96" OLED panel
+ *
+ */
+
 #include <ESP8266WiFi.h>
 #include <DNSServer.h>
 #include <WiFiClient.h>
@@ -8,17 +17,18 @@
 #include <ESP8266mDNS.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
-#include <skRTClib.h>
 #include <ArduinoJson.h>
 #include <pgmspace.h>
+#include <skRTClib.h>
 #include <OneWire.h>
 #include <DallasTemperature.h>
-#include "OLED_pattern.h"
-#include "Webpages.h"
 
+#include "Webpages.h"
 #include "sensors.h"
 #include "ledlight.h"
 #include "fan.h"
+//#include "networkinfo.h"
+#include "OLEDScreen.h"
 
 #define PIN_1WIRE 2
 #define PIN_SDA 4
@@ -31,60 +41,53 @@
 #define WEB_LED_ON  LOW
 #define WEB_LED_OFF HIGH
 
-#define NUM_PAGES 5
-
 #define I2C_PING_ADDRESS       0x26
 #define ATTINY85_LED_ADDRESS   0x27
 
-#define ATTINY85_PIN_LED       0x00 
-#define ATTINY85_PIN_DIM_LED   0x80 
-#define ATTINY85_PIN_FAN       0x01 
+#define ATTINY85_PIN_LED       0x00
+#define ATTINY85_PIN_DIM_LED   0x80
+#define ATTINY85_PIN_FAN       0x01
 
 #define BME280_ADDRESS   0x76
 
 #define EEPROM_SSID_ADDR    0
 #define EEPROM_PASS_ADDR    32
 #define EEPROM_MDNS_ADDR    96
-// schedule:  0=flag 1=on_h 2=on_m 3=off_h 4=off_m
 #define EEPROM_SCHEDULE_ADDR  128
-// autofan: 0=flag 1=hi_l(LB) 2=hi_l(HB) 3=lo_l(LB) 4=lo_l(HB)
 #define EEPROM_AUTOFAN_ADDR 133
 #define EEPROM_TWITTER_TOKEN_ADDR 138
 #define EEPROM_TWITTER_CONFIG_ADDR 170
 #define EEPROM_WATER_LEVEL_ADDR  186
 #define EEPROM_LAST_ADDR    188
 
+#define DEFAULT_SITE_NAME "aquamon"
+
 int use_twitter = 0;
 String stewgate_host = "stewgate-u.appspot.com";
 String stewgate_token = "";
 
-const char* apSSID   = "AQUAMON1";
 boolean settingMode;
+
+const char* apSSID   = "AQUAMON1";
 String ssidList;
-String sitename = "aquamon";
 
 volatile boolean rtcint;
 int timer_count = 0;
-int average_count = 0;
-
-volatile uint8_t oled_page = 0;
-volatile boolean oled_changed = false;
 
 const IPAddress apIP(192, 168, 1, 1);
 DNSServer dnsServer;
 ESP8266WebServer webServer(80);
 MDNSResponder mdns;
-Adafruit_SSD1306 oled;
 
-Sensors sensors;
+Sensors    sensors;
 ledLight   light(ATTINY85_LED_ADDRESS, ATTINY85_PIN_DIM_LED);
 fanCooler  fan(ATTINY85_LED_ADDRESS, ATTINY85_PIN_FAN);
 
-//OLEDScreen oled(&sensors,&light,&fan);
+OLEDScreen oled(&sensors, &light, &fan);
 
-/***************************************************************
+/*
  * interrupt handlers
- ***************************************************************/
+ */
 
 void RTCHandler() {
   rtcint = 1;
@@ -93,15 +96,13 @@ void RTCHandler() {
 void BTNHandler() {
   detachInterrupt(PIN_BTN);
   delayMicroseconds(10000);
-  oled_changed = true;
-  oled_page++;
-  oled_page %= NUM_PAGES;
+  oled.incPage();
   attachInterrupt(PIN_BTN, BTNHandler, FALLING);
 }
 
-/***************************************************************
+/*
  * Setup and loop
- ***************************************************************/
+ */
 
 void setup() {
   Serial.begin(115200);
@@ -114,30 +115,32 @@ void setup() {
   digitalWrite(PIN_FAN, LOW);
 
   Wire.begin(PIN_SDA, PIN_SCL);
-  RTC.begin(16, 1, 1, 0, 0, 0, 0);
 
   sensors.begin();
-
+  sensors.siteName(DEFAULT_SITE_NAME);
+  
+  RTC.begin(16, 1, 1, 0, 0, 0, 0);
   rtcint = 0;
+  RTC.setTimer(RTC_TIMER_BASE_1S, 1); // Timer 1 Hz
+
   pinMode(PIN_RTC_INT, INPUT_PULLUP);
   digitalWrite(PIN_RTC_INT, HIGH);
   attachInterrupt(PIN_RTC_INT, RTCHandler, FALLING);
-  RTC.setTimer(RTC_TIMER_BASE_1S, 1); // Timer 1 Hz
 
   pinMode(PIN_BTN, INPUT_PULLUP);
   digitalWrite(PIN_BTN, HIGH);
   attachInterrupt(PIN_BTN, BTNHandler, FALLING);
 
-  oled.begin(SSD1306_SWITCHCAPVCC, 0x3C);         // Initialize the OLED
-  //  oled.clearDisplay();      // Clear the display's internal memory
+  oled.begin(SSD1306_SWITCHCAPVCC,0x3C);         // Initialize the OLED
   oled.display();       // Display what's in the buffer (splashscreen)
   oled.setTextSize(1);  // Set text size 1
   oled.setTextColor(WHITE, BLACK);
   delay(10);
+
   if (restoreConfig()) {
     if (checkConnection()) {
       WiFi.mode(WIFI_STA);
-      if (mdns.begin(sitename.c_str(), WiFi.localIP())) {
+      if (mdns.begin(sensors.siteName().c_str(), WiFi.localIP())) {
         Serial.println("MDNS responder started.");
       }
       settingMode = false;
@@ -151,6 +154,7 @@ void setup() {
   } else {
     settingMode = true;
   }
+
   if (settingMode == true) {
     WiFi.mode(WIFI_STA);
     WiFi.disconnect();
@@ -167,37 +171,25 @@ void setup() {
 }
 
 void loop() {
-  byte tm[7] ;
-  char buf[25] ;
-
   if (settingMode) {
     dnsServer.processNextRequest();
   }
   webServer.handleClient();
 
-  if (oled_changed == true) {
+  if (oled.changed()) {
     if (!settingMode) {
-      //    Serial.println(oled_changed);
-      OLEDdrawPage();
-      oled_changed = false;
+      oled.drawPage();
+      oled.drawClock();
       oled.display();       // Refresh the display
     }
   }
 
   if (rtcint == 1) {
-    //    Serial.println(oled_changed);
-    RTC.rTime(tm) ;
-    RTC.cTime(tm, (byte *)buf) ;
-    //Serial.println(RTC.getIntType()) ;
-    oled.setCursor(6, 57); // Set cursor
-    oled.setTextColor(WHITE, BLACK);
-    oled.print(buf);
-
+    oled.drawClock();
     timer_count++;
-    //    if (!settingMode && timer_count >= 30) {
     if (!settingMode) {
       sensors.readData();
-      OLEDdrawPage();
+      oled.drawPage();
     }
     oled.display();       // Refresh the display
     timer_count %= 900;
@@ -206,215 +198,18 @@ void loop() {
       sensors.logData();
     }
 
+    byte tm[7] ;
+    RTC.rTime(tm) ;
     int hh = ((tm[2] & 0xF0) >> 4) * 10 + (tm[2] & 0x0F);
     int mm = ((tm[1] & 0xF0) >> 4) * 10 + (tm[1] & 0x0F);
 
-    light.control(hh,mm);
+    light.control(hh, mm);
     fan.control(sensors.getWaterTemp());
 
     delay(10);
     rtcint = 0;
   }
   ESP.wdtFeed();
-}
-
-/***************************************************************
- * OLED functions
- ***************************************************************/
-
-void OLEDdrawPage() {
-  if (oled_page == 0) {
-    if (oled_changed == true) {
-      oled.clearDisplay();     // Clear the page
-      oled.drawBitmap(96, 16, aquatan_logo, 32, 32, WHITE);
-      oled.fillRect(0, 0, 127, 15, WHITE);
-      oled.setCursor(26, 3);
-      oled.setTextColor(BLACK, WHITE);
-      oled.print("CURRENT STATUS");
-      oled.setTextColor(WHITE, BLACK);
-    }
-    OLEDshowMeasure();
-  } else if (oled_page == 1) {
-    if (oled_changed == true) {
-      oled.clearDisplay();     // Clear the page
-      oled.fillRect(0, 0, 127, 15, WHITE);
-      oled.setCursor(26, 3);
-      oled.setTextColor(BLACK, WHITE);
-      oled.print("WATER TEMP LOG");
-      oled.setTextColor(WHITE, BLACK);
-    }
-    OLEDshowWTGraph();
-  } else if (oled_page == 2) {
-    if (oled_changed == true) {
-      oled.clearDisplay();     // Clear the page
-      oled.fillRect(0, 0, 127, 15, WHITE);
-      oled.setCursor(32, 3);
-      oled.setTextColor(BLACK, WHITE);
-      oled.print("AIR TEMP LOG");
-      oled.setTextColor(WHITE, BLACK);
-    }
-    OLEDshowATGraph();
-  } else if (oled_page == 3) {
-    if (oled_changed == true) {
-      oled.clearDisplay();     // Clear the page
-      oled.fillRect(0, 0, 127, 15, WHITE);
-      oled.setCursor(16, 3);
-      oled.setTextColor(BLACK, WHITE);
-      oled.print("LED & FAN STATUS");
-      oled.setTextColor(WHITE, BLACK);
-      oled.setCursor(0, 0); // Set cursor to top-left
-    }
-    OLEDshowLedStatus();
-    OLEDshowFanStatus();
-  } else if (oled_page == 4) {
-    if (oled_changed == true) {
-      oled.clearDisplay();     // Clear the page
-      oled.fillRect(0, 0, 127, 15, WHITE);
-      oled.setCursor(30, 3);
-      oled.setTextColor(BLACK, WHITE);
-      oled.print("SERVER INFO");
-      oled.setTextColor(WHITE, BLACK);
-      oled.setCursor(0, 0); // Set cursor to top-left
-    }
-    OLEDshowServerInfo();
-  }
-}
-/*    14          112
- * 25 |
- *    |
- * 55 |____________
- */
-void OLEDshowWTGraph() {
-  oled.setCursor(0, 16);
-  oled.print("W.Temp");
-  oled.drawLine(14, 25, 14, 55, WHITE);
-  oled.drawLine(14, 55, 112, 55, WHITE);
-  oled.drawPixel(13, 51, WHITE);
-  oled.drawPixel(13, 41, WHITE);
-  oled.drawPixel(13, 31, WHITE);
-  oled.setCursor(113, 47);
-  oled.print("1d");
-  oled.setCursor(0, 47);
-  oled.print("10");
-  oled.setCursor(0, 37);
-  oled.print("20");
-  oled.setCursor(0, 27);
-  oled.print("30");
-  for (int i = 0; i < 96; i++) {
-    int temp = (int)sensors.getWaterTempLog(i);
-    if (temp > 10 && temp < 40) {
-      oled.drawPixel(16 + (95 - i), 51 + (10 - temp), WHITE);
-    }
-  }
-}
-
-void OLEDshowATGraph() {
-  oled.setCursor(0, 16);
-  oled.print("A.Temp");
-  oled.drawLine(14, 25, 14, 55, WHITE);
-  oled.drawLine(14, 55, 112, 55, WHITE);
-  oled.drawPixel(13, 51, WHITE);
-  oled.drawPixel(13, 41, WHITE);
-  oled.drawPixel(13, 31, WHITE);
-  oled.setCursor(113, 47);
-  oled.print("1d");
-  oled.setCursor(0, 47);
-  oled.print("10");
-  oled.setCursor(0, 37);
-  oled.print("20");
-  oled.setCursor(0, 27);
-  oled.print("30");
-  for (int i = 0; i < 96; i++) {
-    int temp = (int)sensors.getAirTempLog(i);
-    if (temp > 10 && temp < 40) {
-      oled.drawPixel(16 + (95 - i), 51 + (10 - temp), WHITE);
-    }
-  }
-}
-void OLEDshowMeasure() {
-  oled.setCursor(0, 16);
-  oled.print("A.Temp:");
-  oled.print(sensors.getAirTemp(), 1);
-  oled.println(" 'C");
-  oled.print("W.Temp:");
-  oled.print(sensors.getWaterTemp(), 1);
-  oled.println(" 'C");
-  oled.print("Press: ");
-  oled.print(sensors.getPressure(), 0);
-  oled.println(" hPa");
-  oled.print("Humid: ");
-  oled.print(sensors.getHumidity(), 1);
-  oled.println(" %");
-  oled.print("W.Lv:  ");
-  char str[10];
-  sprintf(str, "%3d cm", sensors.getWaterLevel());
-  oled.print(str);
-}
-
-void OLEDshowLedStatus() {
-  oled.setCursor(0, 16);
-  oled.print("LED");
-  if (light.value() > 0) {
-    oled.fillCircle(44, 28, 12, WHITE);
-    oled.setCursor(39, 25);
-    oled.setTextColor(BLACK, WHITE); // 'inverted' text
-    oled.print("ON");
-    oled.setTextColor(WHITE, BLACK);
-  } else {
-    oled.drawCircle(44, 28, 11, WHITE);
-    oled.drawCircle(44, 28, 12, WHITE);
-    oled.setCursor(36, 25);
-    oled.setTextColor(WHITE);
-    oled.print("OFF");
-    oled.setTextColor(WHITE, BLACK);
-  }
-  oled.setCursor(0, 40);
-  oled.println("Schedule");
-  if (!light.enabled()) {
-    oled.print("   none   ");
-  } else {
-    char buf[10];
-    sprintf(buf, "%02d%02d-%02d%02d", light.on_h(), light.on_m(), light.off_h(), light.off_m());
-    oled.print(buf);
-  }
-}
-
-void OLEDshowFanStatus() {
-  oled.setCursor(64, 16);
-  oled.print("FAN");
-  if (fan.value() > 0) {
-    oled.fillCircle(108, 28, 12, WHITE);
-    oled.setCursor(103, 25);
-    oled.setTextColor(BLACK, WHITE); // 'inverted' text
-    oled.print("ON");
-    oled.setTextColor(WHITE, BLACK);
-  } else {
-    oled.drawCircle(108, 28, 11, WHITE);
-    oled.drawCircle(108, 28, 12, WHITE);
-    oled.setCursor(100, 25);
-    oled.setTextColor(WHITE);
-    oled.print("OFF");
-    oled.setTextColor(WHITE, BLACK);
-  }
-  oled.setCursor(64, 40);
-  oled.println("Temp range");
-  oled.setCursor(64, 48);
-  if (!fan.enabled()) {
-    oled.print("none      ");
-  } else {
-    oled.print(fan.lowLimit(), 1);
-    oled.print("-");
-    oled.print(fan.highLimit(), 1);
-  }
-}
-
-void OLEDshowServerInfo() {
-  oled.setCursor(0, 16);
-  oled.println("Site name:");
-  oled.print(sitename);
-  oled.println(".local");
-  oled.print("IP: ");
-  oled.println(WiFi.localIP());
 }
 
 /***************************************************************
@@ -426,6 +221,14 @@ boolean restoreConfig() {
   String ssid = "";
   String pass = "";
 
+  // Initialize on first boot
+  if (EEPROM.read(0) == 255) {
+    for (int i = 0; i < EEPROM_LAST_ADDR; ++i) {
+      EEPROM.write(i, 0);
+    }
+    EEPROM.commit();    
+  }
+
   int use_schedule  = EEPROM.read(EEPROM_SCHEDULE_ADDR) == 1 ? 1 : 0;
   if (use_schedule == 1) {
     light.enableSchedule();
@@ -436,7 +239,7 @@ boolean restoreConfig() {
   int e_on_m  = EEPROM.read(EEPROM_SCHEDULE_ADDR + 2);
   int e_off_h = EEPROM.read(EEPROM_SCHEDULE_ADDR + 3);
   int e_off_m = EEPROM.read(EEPROM_SCHEDULE_ADDR + 4);
-  light.setSchedule(e_on_h,e_on_m,e_off_h,e_off_m);
+  light.setSchedule(e_on_h, e_on_m, e_off_h, e_off_m);
 
   int use_autofan = EEPROM.read(EEPROM_AUTOFAN_ADDR) == 1 ? 1 : 0;
   if (use_autofan == 1) {
@@ -447,6 +250,7 @@ boolean restoreConfig() {
   uint32_t b1 = EEPROM.read(EEPROM_AUTOFAN_ADDR + 1);
   uint32_t b2 = EEPROM.read(EEPROM_AUTOFAN_ADDR + 2);
   fan.highLimit((float)(b1 | b2 << 8) / 10.0);
+
   b1 = EEPROM.read(EEPROM_AUTOFAN_ADDR + 3);
   b2 = EEPROM.read(EEPROM_AUTOFAN_ADDR + 4);
   fan.lowLimit((float)(b1 | b2 << 8) / 10.0);
@@ -455,7 +259,7 @@ boolean restoreConfig() {
   int lv_em = EEPROM.read(EEPROM_WATER_LEVEL_ADDR + 1);
   sensors.waterLevelLimitWarn(lv_wa);
   sensors.waterLevelLimitEmerge(lv_em);
-  
+
   use_twitter  = EEPROM.read(EEPROM_TWITTER_CONFIG_ADDR) == 1 ? 1 : 0;
   if (EEPROM.read(EEPROM_TWITTER_TOKEN_ADDR) != 0) {
     stewgate_token = "";
@@ -478,8 +282,9 @@ boolean restoreConfig() {
     Serial.print("Password: ");
     Serial.println(pass);
     WiFi.begin(ssid.c_str(), pass.c_str());
+
     if (EEPROM.read(EEPROM_MDNS_ADDR) != 0) {
-      sitename = "";
+      String sitename = "";
       for (int i = 0; i < 32; ++i) {
         byte c = EEPROM.read(EEPROM_MDNS_ADDR + i);
         if (c == 0) {
@@ -487,10 +292,9 @@ boolean restoreConfig() {
         }
         sitename += char(c);
       }
+      sensors.siteName(sitename);
       Serial.println("restored sitename");
     }
-    Serial.print("Sitename: ");
-    Serial.println(sitename);
 
     return true;
   }
@@ -570,17 +374,11 @@ bool post_tweet(String msg) {
 
 void startWebServer_setting() {
   oled.clearDisplay();     // Clear the page
-  oled.fillRect(0, 0, 127, 15, WHITE);
-  oled.setCursor(30, 4); // Set cursor
-  oled.setTextColor(BLACK, WHITE);
-  //  oled.setTextSize(2);
-  oled.print("SETTING MODE");
-  //  oled.setTextSize(1);
-  oled.setTextColor(WHITE, BLACK);
+  oled.drawHeader("SETTING MODE");
   oled.setCursor(0, 20); // Set cursor
   oled.print("Connect SSID:");
   oled.println(apSSID);
-  oled.drawBitmap(0, 32, aquatan_logo, 32, 32, WHITE);
+  oled.drawLogo(0, 32);
   oled.display();       // Refresh the display
   delay(10);
 
@@ -685,19 +483,12 @@ setInterval("rt()",1000);
   webServer.begin();
 }
 
-
 /*
  * Web server for normal operation
  */
 void startWebServer_normal() {
   oled.clearDisplay();
-  oled.drawBitmap(96,16,aquatan_logo,32,32,WHITE);
-  oled.fillRect(0, 0, 127, 15, WHITE);
-  oled.setCursor(26, 4);
-  oled.setTextColor(BLACK,WHITE);
-  oled.print("CURRENT STATUS");
-  oled.setTextColor(WHITE,BLACK);
-  OLEDdrawPage();
+  oled.drawPage();
   oled.display();       // Refresh the display
   
   delay(10);

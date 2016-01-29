@@ -31,6 +31,8 @@ class Sensors {
     int waterLevelLimitEmerge();
     void waterLevelLimitWarn(int v);
     void waterLevelLimitEmerge(int v);
+    String siteName();
+    void siteName(String s);
 
   private:
     OneWire *ds;
@@ -52,6 +54,8 @@ class Sensors {
     float airTempLog[100];
     float pressureLog[100];
     float humidityLog[100];
+
+    String _sitename;
 };
 
 #endif

@@ -92,3 +92,10 @@ float Sensors::getHumidityLog(int id) {
   return humidityLog[(id + log_wd) % 96];
 }
 
+String Sensors::siteName() {
+  return _sitename;
+}
+void Sensors::siteName(String s) {
+  _sitename = s;
+}
+

@@ -12,22 +12,29 @@
 
 class OLEDScreen : public Adafruit_SSD1306 {
   public:
-    OLEDScreen(Sensors *s,ledLight *l,fanCooler *f);
+    OLEDScreen(Sensors *s, ledLight *l, fanCooler *f);
 
     void incPage();
     int  getPage();
-    void drawPage(int page_num);
+    void drawPage();
     void drawHeader(String msg);
     void drawClock();
     void drawLogo(int x, int y);
     void drawMeasure();
-    
+    void drawLedStatus();
+    void drawFanStatus();
+    void drawServerInfo();
+    void drawWaterTempGraph();
+    void drawAirTempGraph();
+    bool changed();
+    void changed(bool v);
+
   private:
-    Sensors *sensors;
-    ledLight *light;
-    fanCooler *fan;    
-    int page;
-    bool changed;
+    Sensors   *_sensors;
+    ledLight  *_light;
+    fanCooler *_fan;
+    int        _page;
+    volatile bool       _changed;
 };
 
 #endif
