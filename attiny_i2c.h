@@ -9,6 +9,7 @@ class attiny_i2c {
     attiny_i2c(uint8_t address, uint8_t pin);
     void    value(uint8_t val);
     uint8_t value();
+    void    heartbeat();
   protected:
     int _address;
     int _pin;

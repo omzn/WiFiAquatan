@@ -5,7 +5,9 @@
 #include <DallasTemperature.h>
 
 #include "hcsr04_i2c.h"
+#ifdef USE_BME280
 #include "bme280_i2c.h"
+#endif
 
 #define I2C_PING_ADDRESS       0x26
 #define BME280_ADDRESS   0x76
@@ -20,13 +22,13 @@ class Sensors {
     float getAirTemp();
     float getPressure();
     float getHumidity();
-    int    getWaterLevel();
-    void   logData();
-    float  getWaterTempLog(int id);
-    float  getAirTempLog(int id);
-    float  getPressureLog(int id);
-    float  getHumidityLog(int id);
-    void waterLevelLimits(int w,int e);
+    int   getWaterLevel();
+    void  logData();
+    float getWaterTempLog(int id);
+    float getAirTempLog(int id);
+    float getPressureLog(int id);
+    float getHumidityLog(int id);
+    void waterLevelLimits(int w, int e);
     int waterLevelLimitWarn();
     int waterLevelLimitEmerge();
     void waterLevelLimitWarn(int v);
@@ -38,8 +40,9 @@ class Sensors {
     OneWire *ds;
     DallasTemperature *ds18b20;
     hcsr04_i2c *i2cping;
+#ifdef USE_BME280
     bme280_i2c *bme280;
-
+#endif
     float waterTemp = 0.0;
     float airTemp = 0.0;
     float pressure = 0.0;

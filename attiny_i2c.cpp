@@ -23,4 +23,8 @@ void attiny_i2c::value(uint8_t val) {
   Wire.read();  
 }
 
-
+void attiny_i2c::heartbeat() {
+  Wire.requestFrom(_address, 1); // request 1 bytes
+  while (Wire.available() == 0);
+  Wire.read();
+}

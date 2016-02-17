@@ -1,11 +1,16 @@
 /*
  * WiFi Aquatan Controller (China OLED version) ***
- *   RTC:  RTC-8564NB
+ *   RTC:  RTC-8564NB or DS1307
  *   Temp: DS18B20
  *   Env:  BME280
  *   OLED: 0.96" OLED panel
  *
  */
+
+//#define DEBUG
+//#define USE_RTC8564
+#define USE_DS1307
+//#define USE_BME280
 
 #include <ESP8266WiFi.h>
 #include <DNSServer.h>
@@ -19,7 +24,14 @@
 #include <Adafruit_SSD1306.h>
 #include <ArduinoJson.h>
 #include <pgmspace.h>
+
+#ifdef USE_RTC8564
 #include <skRTClib.h>
+#endif
+#ifdef USE_DS1307
+#include <RTClib.h>
+#endif
+
 #include <OneWire.h>
 #include <DallasTemperature.h>
 
@@ -29,7 +41,6 @@
 #include "fan.h"
 #include "OLEDScreen.h"
 
-//#define DEBUG 1
 
 #define PIN_1WIRE 2
 #define PIN_SDA 4
@@ -49,8 +60,6 @@
 #define ATTINY85_PIN_DIM_LED   0x80
 #define ATTINY85_PIN_FAN       0x01
 
-#define BME280_ADDRESS   0x76
-
 #define EEPROM_SSID_ADDR    0
 #define EEPROM_PASS_ADDR    32
 #define EEPROM_MDNS_ADDR    96
@@ -61,10 +70,7 @@
 #define EEPROM_WATER_LEVEL_ADDR  186
 #define EEPROM_LAST_ADDR    188
 
-#define DEFAULT_SITE_NAME "aquamon"
-
-#define PIXELS (6)
-#define COLOR_MAX (255)
+#define DEFAULT_SITE_NAME "aquarium1"
 
 int use_twitter = 0;
 String stewgate_host = "stewgate-u.appspot.com";
@@ -82,6 +88,10 @@ const IPAddress apIP(192, 168, 1, 1);
 DNSServer dnsServer;
 ESP8266WebServer webServer(80);
 MDNSResponder mdns;
+
+#ifdef USE_DS1307
+RTC_DS1307 rtc;
+#endif
 
 Sensors    sensors;
 ledLight   light(ATTINY85_LED_ADDRESS, ATTINY85_PIN_DIM_LED);
@@ -125,9 +135,17 @@ void setup() {
   sensors.begin();
   sensors.siteName(DEFAULT_SITE_NAME);
 
-  RTC.begin(16, 1, 1, 0, 0, 0, 0);
   rtcint = 0;
+#ifdef USE_RTC8564
+  RTC.begin(16, 1, 1, 0, 0, 0, 0);
   RTC.setTimer(RTC_TIMER_BASE_1S, 1); // Timer 1 Hz
+#endif
+#ifdef USE_DS1307
+  if (! rtc.isrunning() ) {
+    rtc.adjust(DateTime(2016, 1, 1, 0, 0, 0));
+  }
+  rtc.writeSqwPinMode(SquareWave1HZ);
+#endif
 
   pinMode(PIN_RTC_INT, INPUT_PULLUP);
   digitalWrite(PIN_RTC_INT, HIGH);
@@ -178,6 +196,7 @@ void setup() {
     Serial.println("\"");
 #endif
   }
+  ESP.wdtEnable(10000);
 }
 
 void loop() {
@@ -208,15 +227,26 @@ void loop() {
       sensors.logData();
     }
 
+    //    if (timer_count % 10 == 0) {
+    //      light.heartbeat();
+    //    }
+
+    int hh, mm;
+#ifdef USE_RTC8564
     byte tm[7] ;
     RTC.rTime(tm) ;
-    int hh = ((tm[2] & 0xF0) >> 4) * 10 + (tm[2] & 0x0F);
-    int mm = ((tm[1] & 0xF0) >> 4) * 10 + (tm[1] & 0x0F);
-
+    hh = ((tm[2] & 0xF0) >> 4) * 10 + (tm[2] & 0x0F);
+    mm = ((tm[1] & 0xF0) >> 4) * 10 + (tm[1] & 0x0F);
+#endif
+#ifdef USE_DS1307
+    DateTime now = rtc.now();
+    hh = now.hour();
+    mm = now.minute();
+#endif
     light.control(hh, mm);
     fan.control(sensors.getWaterTemp());
 
-    delay(10);
+    delay(5);
     rtcint = 0;
   }
   ESP.wdtFeed();
@@ -384,6 +414,7 @@ void startWebServer_setting() {
 #endif
   webServer.on("/setap", []() {
     // 時刻を設定
+#ifdef USE_RTC8564
     RTC.sTime(webServer.arg("year").toInt() - 100,
               webServer.arg("mon").toInt(),
               webServer.arg("day").toInt(),
@@ -392,6 +423,17 @@ void startWebServer_setting() {
               webServer.arg("min").toInt(),
               webServer.arg("sec").toInt()
              );
+#endif
+#ifdef USE_DS1307
+    rtc.adjust(DateTime(
+                 webServer.arg("year").toInt() + 1900,
+                 webServer.arg("mon").toInt(),
+                 webServer.arg("day").toInt(),
+                 webServer.arg("hour").toInt(),
+                 webServer.arg("min").toInt(),
+                 webServer.arg("sec").toInt()));
+#endif
+
     for (int i = 0; i < EEPROM_MDNS_ADDR; ++i) {
       EEPROM.write(i, 0);
     }
@@ -548,7 +590,7 @@ void handleMeasure() {
   json["fan"] = fan.value();
   json.printTo(message);
   webServer.send(200, "application/json", message);
-    digitalWrite(PIN_LED, WEB_LED_OFF);
+  digitalWrite(PIN_LED, WEB_LED_OFF);
 
 }
 
