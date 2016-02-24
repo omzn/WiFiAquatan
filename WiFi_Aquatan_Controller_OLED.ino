@@ -1,3 +1,4 @@
+
 /*
  * WiFi Aquatan Controller (China OLED version) ***
  *   RTC:  RTC-8564NB or DS1307
@@ -7,31 +8,21 @@
  *
  */
 
-//#define DEBUG
-//#define USE_RTC8564
-#define USE_DS1307
-//#define USE_BME280
+#include "WiFiAquatan.h" // Configuration parameters
 
+#include <pgmspace.h>
+#include <Wire.h>
+#include <SPI.h>
 #include <ESP8266WiFi.h>
 #include <DNSServer.h>
 #include <WiFiClient.h>
-#include <SPI.h>
-#include <Wire.h>
 #include <EEPROM.h>
 #include <ESP8266WebServer.h>
 #include <ESP8266mDNS.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 #include <ArduinoJson.h>
-#include <pgmspace.h>
-
-#ifdef USE_RTC8564
-#include <skRTClib.h>
-#endif
-#ifdef USE_DS1307
 #include <RTClib.h>
-#endif
-
 #include <OneWire.h>
 #include <DallasTemperature.h>
 
@@ -41,11 +32,9 @@
 #include "fan.h"
 #include "OLEDScreen.h"
 
-
 #define PIN_1WIRE 2
 #define PIN_SDA 4
 #define PIN_SCL 14
-#define PIN_FAN 12
 #define PIN_LED 13
 #define PIN_BTN 0
 #define PIN_RTC_INT 5
@@ -70,33 +59,38 @@
 #define EEPROM_WATER_LEVEL_ADDR  186
 #define EEPROM_LAST_ADDR    188
 
-#define DEFAULT_SITE_NAME "aquarium1"
+#define UDP_LOCAL_PORT 2390
+#define NTP_PACKET_SIZE  48
+#define SECONDS_UTC_TO_JST 32400
 
-int use_twitter = 0;
-String stewgate_host = "stewgate-u.appspot.com";
-String stewgate_token = "";
+const String website_name  = "aquarium3";
+const char* apSSID         = "WIFI_AQUATAN";
+const char* timeServer     = "ntp.nict.jp";
+const String stewgate_host = "stewgate-u.appspot.com";
+String stewgate_token      = "";
 
+uint8_t use_twitter = 0;
 boolean settingMode;
-
-const char* apSSID   = "AQUAMON1";
 String ssidList;
 
 volatile boolean rtcint;
-int timer_count = 0;
-
+uint32_t timer_count = 0;
+byte packetBuffer[NTP_PACKET_SIZE];
 const IPAddress apIP(192, 168, 1, 1);
 DNSServer dnsServer;
 ESP8266WebServer webServer(80);
 MDNSResponder mdns;
+WiFiUDP udp;
 
-#ifdef USE_DS1307
+#ifdef USE_RTC8564
+RTC_RTC8564 rtc;
+#else
 RTC_DS1307 rtc;
 #endif
 
 Sensors    sensors;
 ledLight   light(ATTINY85_LED_ADDRESS, ATTINY85_PIN_DIM_LED);
 fanCooler  fan(ATTINY85_LED_ADDRESS, ATTINY85_PIN_FAN);
-
 OLEDScreen oled(&sensors, &light, &fan);
 
 /*
@@ -127,23 +121,20 @@ void setup() {
 
   pinMode(PIN_LED, OUTPUT);
   digitalWrite(PIN_LED, WEB_LED_OFF);
-  pinMode(PIN_FAN, OUTPUT);
-  digitalWrite(PIN_FAN, LOW);
 
   Wire.begin(PIN_SDA, PIN_SCL);
 
   sensors.begin();
-  sensors.siteName(DEFAULT_SITE_NAME);
+  sensors.siteName(website_name);
 
   rtcint = 0;
-#ifdef USE_RTC8564
-  RTC.begin(16, 1, 1, 0, 0, 0, 0);
-  RTC.setTimer(RTC_TIMER_BASE_1S, 1); // Timer 1 Hz
-#endif
-#ifdef USE_DS1307
   if (! rtc.isrunning() ) {
     rtc.adjust(DateTime(2016, 1, 1, 0, 0, 0));
   }
+
+#ifdef USE_RTC8564
+  rtc.writeIntPinMode(Rtc8564_1S,1);
+#else
   rtc.writeSqwPinMode(SquareWave1HZ);
 #endif
 
@@ -171,6 +162,8 @@ void setup() {
       }
       settingMode = false;
 
+      udp.begin(UDP_LOCAL_PORT);
+
       sensors.readData();
       startWebServer_normal();
       return;
@@ -196,10 +189,11 @@ void setup() {
     Serial.println("\"");
 #endif
   }
-  ESP.wdtEnable(10000);
+  ESP.wdtEnable(100);
 }
 
 void loop() {
+  ESP.wdtFeed();
   if (settingMode) {
     dnsServer.processNextRequest();
   }
@@ -215,41 +209,105 @@ void loop() {
 
   if (rtcint == 1) {
     oled.drawClock();
-    timer_count++;
     if (!settingMode) {
       sensors.readData();
       oled.drawPage();
     }
     oled.display();       // Refresh the display
-    timer_count %= 900;
 
-    if (timer_count == 1) {
+    if (timer_count % 3600 == 0) {
+      uint32_t epoch = getNTPtime();
+#ifdef DEBUG
+      Serial.print("epoch:");
+      Serial.println(epoch);
+#endif
+      if (epoch > 0) {
+        rtc.adjust(DateTime(epoch + SECONDS_UTC_TO_JST ));
+      }
+      //      rtc.adjust(DateTime(SECONDS_FROM_1970_TO_2000));
+    }
+    
+    
+    if (timer_count % 900 == 0) {
       sensors.logData();
     }
 
-    //    if (timer_count % 10 == 0) {
-    //      light.heartbeat();
-    //    }
+    if (timer_count % 10 == 0) {
+      light.heartbeat();
+    }
 
     int hh, mm;
-#ifdef USE_RTC8564
-    byte tm[7] ;
-    RTC.rTime(tm) ;
-    hh = ((tm[2] & 0xF0) >> 4) * 10 + (tm[2] & 0x0F);
-    mm = ((tm[1] & 0xF0) >> 4) * 10 + (tm[1] & 0x0F);
-#endif
-#ifdef USE_DS1307
     DateTime now = rtc.now();
     hh = now.hour();
     mm = now.minute();
-#endif
     light.control(hh, mm);
     fan.control(sensors.getWaterTemp());
 
     delay(5);
     rtcint = 0;
+    timer_count++;
+    timer_count %= 86400UL;
   }
-  ESP.wdtFeed();
+  delay(1);
+}
+
+/*
+ * NTP related functions
+ */
+
+// send an NTP request to the time server at the given address
+void sendNTPpacket(const char* address) {
+  //  Serial.print("sendNTPpacket : ");
+  //  Serial.println(address);
+
+  // set all bytes in the buffer to 0
+  memset(packetBuffer, 0, NTP_PACKET_SIZE);
+  // Initialize values needed to form NTP request
+  // (see URL above for details on the packets)
+  packetBuffer[0]  = 0b11100011;   // LI, Version, Mode
+  packetBuffer[1]  = 0;     // Stratum, or type of clock
+  packetBuffer[2]  = 6;     // Polling Interval
+  packetBuffer[3]  = 0xEC;  // Peer Clock Precision
+  // 8 bytes of zero for Root Delay & Root Dispersion
+  packetBuffer[12] = 49;
+  packetBuffer[13] = 0x4E;
+  packetBuffer[14] = 49;
+  packetBuffer[15] = 52;
+  // all NTP fields have been given values, now
+  // you can send a packet requesting a timestamp:
+  udp.beginPacket(address, 123); //NTP requests are to port 123
+  udp.write(packetBuffer, NTP_PACKET_SIZE);
+  udp.endPacket();
+}
+
+uint32_t readNTPpacket() {
+  //  Serial.println("Receive NTP Response");
+  udp.read(packetBuffer, NTP_PACKET_SIZE);  // read packet into the buffer
+  unsigned long secsSince1900 = 0;
+  // convert four bytes starting at location 40 to a long integer
+  secsSince1900 |= (unsigned long)packetBuffer[40] << 24;
+  secsSince1900 |= (unsigned long)packetBuffer[41] << 16;
+  secsSince1900 |= (unsigned long)packetBuffer[42] <<  8;
+  secsSince1900 |= (unsigned long)packetBuffer[43] <<  0;
+  return secsSince1900 - 2208988800UL; // seconds since 1970
+}
+
+uint32_t getNTPtime() {
+  while (udp.parsePacket() > 0) ; // discard any previously received packets
+#ifdef DEBUG
+  Serial.println("Transmit NTP Request");
+#endif
+  sendNTPpacket(timeServer);
+
+  uint32_t beginWait = millis();
+  while (millis() - beginWait < 1500) {
+    int size = udp.parsePacket();
+    if (size >= NTP_PACKET_SIZE) {
+      return readNTPpacket();
+    }
+  }
+
+  return 0; // return 0 if unable to get the time
 }
 
 /***************************************************************
@@ -414,17 +472,6 @@ void startWebServer_setting() {
 #endif
   webServer.on("/setap", []() {
     // 時刻を設定
-#ifdef USE_RTC8564
-    RTC.sTime(webServer.arg("year").toInt() - 100,
-              webServer.arg("mon").toInt(),
-              webServer.arg("day").toInt(),
-              webServer.arg("wday").toInt(),
-              webServer.arg("hour").toInt(),
-              webServer.arg("min").toInt(),
-              webServer.arg("sec").toInt()
-             );
-#endif
-#ifdef USE_DS1307
     rtc.adjust(DateTime(
                  webServer.arg("year").toInt() + 1900,
                  webServer.arg("mon").toInt(),
@@ -432,7 +479,6 @@ void startWebServer_setting() {
                  webServer.arg("hour").toInt(),
                  webServer.arg("min").toInt(),
                  webServer.arg("sec").toInt()));
-#endif
 
     for (int i = 0; i < EEPROM_MDNS_ADDR; ++i) {
       EEPROM.write(i, 0);

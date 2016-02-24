@@ -1,6 +1,8 @@
 #ifndef SENSORS_H
 #define SENSORS_H
 
+#include "WiFiAquatan.h"
+
 #include <OneWire.h>
 #include <DallasTemperature.h>
 

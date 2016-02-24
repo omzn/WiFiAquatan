@@ -65,17 +65,10 @@ void OLEDScreen::drawHeader(String msg) {
 
 void OLEDScreen::drawClock() {
   char buf[25] ;
-#ifdef USE_RTC8564
-  byte tm[7] ;
-  RTC.rTime(tm) ;
-  RTC.cTime(tm, (byte *)buf) ;
-#endif
-#ifdef USE_DS1307
-  char daysOfTheWeek[7][4] = {"SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"};
-  DateTime now = rtc.now();
-  sprintf(buf,"%4d/%02d/%02d %s %02d:%02d:%02d",now.year(),now.month(),now.day(),daysOfTheWeek[now.dayOfTheWeek()],now.hour(),now.minute(),now.second());
-#endif
-  //Serial.println(RTC.getIntType()) ;
+  const static char daysOfTheWeek[7][4] = {"SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"};
+  DateTime now;
+  now = rtc.now();
+  sprintf(buf,"%4d/%02d/%02d %s %02d:%02d",now.year(),now.month(),now.day(),daysOfTheWeek[now.dayOfTheWeek()],now.hour(),now.minute());
   setCursor(6, 57); // Set cursor
   setTextColor(WHITE, BLACK);
   print(buf);
@@ -84,9 +77,15 @@ void OLEDScreen::drawClock() {
 void OLEDScreen::drawMeasure() {
   char str[10];
   setCursor(0, 16);
+#ifndef USE_BME280
+  println();
+#endif
   print("W.Temp:");
   print(_sensors->getWaterTemp(), 1);
   println(" 'C");
+#ifndef USE_BME280
+  println();
+#endif
 #ifdef USE_BME280
   print("A.Temp:");
   print(_sensors->getAirTemp(), 1);
@@ -96,8 +95,8 @@ void OLEDScreen::drawMeasure() {
   println(" hPa");
   print("Humid: ");
   print(_sensors->getHumidity(), 1);
-#endif
   println(" %");
+#endif
   print("W.Lv:  ");
   sprintf(str, "%3d cm", _sensors->getWaterLevel());
   print(str);
