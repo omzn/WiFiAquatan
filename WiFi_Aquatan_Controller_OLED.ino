@@ -63,7 +63,7 @@
 #define NTP_PACKET_SIZE  48
 #define SECONDS_UTC_TO_JST 32400
 
-const String website_name  = "aquarium3";
+const String website_name  = "aqua1";
 const char* apSSID         = "WIFI_AQUATAN";
 const char* timeServer     = "ntp.nict.jp";
 const String stewgate_host = "stewgate-u.appspot.com";
@@ -147,6 +147,10 @@ void setup() {
   attachInterrupt(PIN_BTN, BTNHandler, FALLING);
 
   oled.begin(SSD1306_SWITCHCAPVCC, 0x3C);        // Initialize the OLED
+
+  oled.ssd1306_command(SSD1306_SETCONTRAST);
+  oled.ssd1306_command(0xff);
+
   oled.display();       // Display what's in the buffer (splashscreen)
   oled.setTextSize(1);  // Set text size 1
   oled.setTextColor(WHITE, BLACK);
@@ -232,7 +236,7 @@ void loop() {
       sensors.logData();
     }
 
-    if (timer_count % 10 == 0) {
+    if (timer_count % 10 == 0) { 
       light.heartbeat();
     }
 

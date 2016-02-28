@@ -45,20 +45,20 @@ class Sensors {
 #ifdef USE_BME280
     bme280_i2c *bme280;
 #endif
-    float waterTemp = 0.0;
-    float airTemp = 0.0;
-    float pressure = 0.0;
-    float humidity = 0.0;
-    int waterLevel = 0;
+    float   waterTemp = -273.0;
+    float   airTemp = -273.0;
+    float   pressure = 0.0;
+    float   humidity = -1.0;
+    int16_t waterLevel = -1;
 
-    int _waterLevelLimitWarn = 0;
-    int _waterLevelLimitEmerge = 0;
+    uint16_t _waterLevelLimitWarn = 0;
+    uint16_t _waterLevelLimitEmerge = 0;
 
-    int log_wd = 0;
-    float waterTempLog[100];
-    float airTempLog[100];
-    float pressureLog[100];
-    float humidityLog[100];
+    uint8_t log_wd = 0;
+    float   waterTempLog[100];
+    float   airTempLog[100];
+    float   pressureLog[100];
+    float   humidityLog[100];
 
     String _sitename;
 };
