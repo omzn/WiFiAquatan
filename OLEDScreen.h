@@ -15,7 +15,9 @@
 class OLEDScreen : public Adafruit_SSD1306 {
   public:
     OLEDScreen(Sensors *s, ledLight *l, fanCooler *f);
-
+    void setContrast(uint8_t c);
+    void onDisplay();
+    void offDisplay();
     void incPage();
     int  getPage();
     void drawPage();

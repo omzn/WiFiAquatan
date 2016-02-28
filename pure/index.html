@@ -363,8 +363,8 @@ $('#lv_em').val(json.lv_em);
 
 function upd() {
 $.getJSON('/measure',function(json){
-$('#wt').html(json.temp.toFixed(1).toString());
-$('#at').html(json.atemp.toFixed(1).toString());
+$('#wt').html(json.water_temp.toFixed(1).toString());
+$('#at').html(json.air_temp.toFixed(1).toString());
 $('#ap').html(json.pressure.toFixed().toString());
 $('#wl').html(json.water_level.toString());
 $('#hu').html(json.humidity.toFixed(1).toString());

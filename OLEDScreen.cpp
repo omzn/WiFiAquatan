@@ -8,6 +8,18 @@ OLEDScreen::OLEDScreen(Sensors *s, ledLight *l, fanCooler *f) {
   _fan = f;
 }
 
+void OLEDScreen::setContrast(uint8_t c) {
+  ssd1306_command(SSD1306_SETCONTRAST);
+  ssd1306_command(c);  
+}
+
+void OLEDScreen::onDisplay() {
+  ssd1306_command(0xAF);
+}
+void OLEDScreen::offDisplay() {
+  ssd1306_command(0xAE);
+}
+
 void OLEDScreen::incPage() {
   _page++;
   _page %= NUM_PAGES;

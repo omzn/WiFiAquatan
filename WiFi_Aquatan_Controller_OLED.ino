@@ -25,8 +25,9 @@
 #include <RTClib.h>
 #include <OneWire.h>
 #include <DallasTemperature.h>
+#include <FS.h>
 
-#include "Webpages.h"
+//#include "Webpages.h"
 #include "sensors.h"
 #include "ledlight.h"
 #include "fan.h"
@@ -42,22 +43,24 @@
 #define WEB_LED_ON  LOW
 #define WEB_LED_OFF HIGH
 
-#define I2C_PING_ADDRESS       0x26
-#define ATTINY85_LED_ADDRESS   0x27
+#define OLED_BRIGHTNESS        (0x01)
 
-#define ATTINY85_PIN_LED       0x00
-#define ATTINY85_PIN_DIM_LED   0x80
-#define ATTINY85_PIN_FAN       0x01
+#define I2C_PING_ADDRESS       (0x26)
+#define ATTINY85_LED_ADDRESS   (0x27)
 
-#define EEPROM_SSID_ADDR    0
-#define EEPROM_PASS_ADDR    32
-#define EEPROM_MDNS_ADDR    96
-#define EEPROM_SCHEDULE_ADDR  128
-#define EEPROM_AUTOFAN_ADDR 133
-#define EEPROM_TWITTER_TOKEN_ADDR 138
-#define EEPROM_TWITTER_CONFIG_ADDR 170
-#define EEPROM_WATER_LEVEL_ADDR  186
-#define EEPROM_LAST_ADDR    188
+#define ATTINY85_PIN_LED       (0x00)
+#define ATTINY85_PIN_DIM_LED   (0x80)
+#define ATTINY85_PIN_FAN       (0x01)
+
+#define EEPROM_SSID_ADDR             (0)
+#define EEPROM_PASS_ADDR            (32)
+#define EEPROM_MDNS_ADDR            (96)
+#define EEPROM_SCHEDULE_ADDR       (128)
+#define EEPROM_AUTOFAN_ADDR        (133)
+#define EEPROM_TWITTER_TOKEN_ADDR  (138)
+#define EEPROM_TWITTER_CONFIG_ADDR (170)
+#define EEPROM_WATER_LEVEL_ADDR    (186)
+#define EEPROM_LAST_ADDR           (188)
 
 #define UDP_LOCAL_PORT 2390
 #define NTP_PACKET_SIZE  48
@@ -75,6 +78,7 @@ String ssidList;
 
 volatile boolean rtcint;
 uint32_t timer_count = 0;
+uint32_t auto_page = 2;
 byte packetBuffer[NTP_PACKET_SIZE];
 const IPAddress apIP(192, 168, 1, 1);
 DNSServer dnsServer;
@@ -105,6 +109,7 @@ void BTNHandler() {
   detachInterrupt(PIN_BTN);
   delayMicroseconds(10000);
   oled.incPage();
+  auto_page = 0;
   attachInterrupt(PIN_BTN, BTNHandler, FALLING);
 }
 
@@ -123,6 +128,7 @@ void setup() {
   digitalWrite(PIN_LED, WEB_LED_OFF);
 
   Wire.begin(PIN_SDA, PIN_SCL);
+  SPIFFS.begin();
 
   sensors.begin();
   sensors.siteName(website_name);
@@ -133,7 +139,7 @@ void setup() {
   }
 
 #ifdef USE_RTC8564
-  rtc.writeIntPinMode(Rtc8564_1S,1);
+  rtc.writeIntPinMode(Rtc8564_1S, 1);
 #else
   rtc.writeSqwPinMode(SquareWave1HZ);
 #endif
@@ -148,8 +154,7 @@ void setup() {
 
   oled.begin(SSD1306_SWITCHCAPVCC, 0x3C);        // Initialize the OLED
 
-  oled.ssd1306_command(SSD1306_SETCONTRAST);
-  oled.ssd1306_command(0xff);
+  oled.setContrast(OLED_BRIGHTNESS);
 
   oled.display();       // Display what's in the buffer (splashscreen)
   oled.setTextSize(1);  // Set text size 1
@@ -204,11 +209,14 @@ void loop() {
   webServer.handleClient();
 
   if (oled.changed()) {
+    oled.offDisplay();
     if (!settingMode) {
       oled.drawPage();
       oled.drawClock();
       oled.display();       // Refresh the display
     }
+    delay(500);
+    oled.onDisplay();
   }
 
   if (rtcint == 1) {
@@ -216,29 +224,42 @@ void loop() {
     if (!settingMode) {
       sensors.readData();
       oled.drawPage();
+
+      if (timer_count % 3600 == 0) {
+        uint32_t epoch = getNTPtime();
+#ifdef DEBUG
+        Serial.print("epoch:");
+        Serial.println(epoch);
+#endif
+        if (epoch > 0) {
+          rtc.adjust(DateTime(epoch + SECONDS_UTC_TO_JST ));
+        }
+        //      rtc.adjust(DateTime(SECONDS_FROM_1970_TO_2000));
+      }
+
+
+      if (timer_count % 900 == 0) {
+        sensors.logData();
+      }
+
+      if (timer_count % 10 == 0) {
+        light.heartbeat();
+      }
+
+      if (timer_count % 15 == 14) {
+        if (auto_page > 1) {
+           oled.incPage();
+        } else {
+           auto_page++;
+#ifdef DEBUG
+        Serial.print("auto_page:");
+        Serial.println(auto_page);
+#endif
+        }
+      }
+
     }
     oled.display();       // Refresh the display
-
-    if (timer_count % 3600 == 0) {
-      uint32_t epoch = getNTPtime();
-#ifdef DEBUG
-      Serial.print("epoch:");
-      Serial.println(epoch);
-#endif
-      if (epoch > 0) {
-        rtc.adjust(DateTime(epoch + SECONDS_UTC_TO_JST ));
-      }
-      //      rtc.adjust(DateTime(SECONDS_FROM_1970_TO_2000));
-    }
-    
-    
-    if (timer_count % 900 == 0) {
-      sensors.logData();
-    }
-
-    if (timer_count % 10 == 0) { 
-      light.heartbeat();
-    }
 
     int hh, mm;
     DateTime now = rtc.now();
@@ -334,6 +355,10 @@ boolean restoreConfig() {
   }
 
   int use_schedule  = EEPROM.read(EEPROM_SCHEDULE_ADDR) == 1 ? 1 : 0;
+#ifdef DEBUG
+  Serial.print("use_schedule:");
+  Serial.println(use_schedule);
+#endif
   if (use_schedule == 1) {
     light.enableSchedule();
   } else {
@@ -380,6 +405,13 @@ boolean restoreConfig() {
     for (int i = EEPROM_PASS_ADDR; i < EEPROM_PASS_ADDR + 64; ++i) {
       pass += char(EEPROM.read(i));
     }
+#ifdef DEBUG
+    Serial.print("ssid:");
+    Serial.println(ssid);
+    Serial.print("pass:");
+    Serial.println(pass);
+#endif
+
     WiFi.begin(ssid.c_str(), pass.c_str());
 
     if (EEPROM.read(EEPROM_MDNS_ADDR) != 0) {
@@ -613,15 +645,27 @@ void startWebServer_normal() {
   webServer.begin();
 }
 
+void send_fs (String path,String contentType) {
+  if(SPIFFS.exists(path)){
+    File file = SPIFFS.open(path, "r");
+    size_t sent = webServer.streamFile(file, contentType);
+    file.close();
+  } else{
+    webServer.send(500, "text/plain", "BAD PATH");
+  }  
+}
+
 void handleRoot() {
   digitalWrite(PIN_LED, WEB_LED_ON);
-  webServer.send_P(200, "text/html", page_p);
+  send_fs("/index.html","text/html");  
+//  webServer.send_P(200, "text/html", page_p);
   digitalWrite(PIN_LED, WEB_LED_OFF);
 }
 
 void handleCss() {
   digitalWrite(PIN_LED, WEB_LED_ON);
-  webServer.send_P(200, "text/css", css_p);
+  send_fs("/pure.css","text/css");  
+//  webServer.send_P(200, "text/css", css_p);
   digitalWrite(PIN_LED, WEB_LED_OFF);
 }
 
@@ -631,8 +675,8 @@ void handleMeasure() {
   DynamicJsonBuffer jsonBuffer;
   JsonObject& json = jsonBuffer.createObject();
 
-  json["atemp"] = sensors.getAirTemp();
-  json["temp"] =  sensors.getWaterTemp();
+  json["air_temp"] = sensors.getAirTemp();
+  json["water_temp"] =  sensors.getWaterTemp();
   json["pressure"] = sensors.getPressure();
   json["humidity"] = sensors.getHumidity();
   json["water_level"] = sensors.getWaterLevel();
