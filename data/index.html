@@ -23,7 +23,7 @@
 
 <div class="l-content">
   <div class="a-t pure-g">
-    <div id="temp" class="pure-u-1 pure-u-md-1-3">
+    <div id="wtemp" class="pure-u-1 pure-u-md-1-3">
       <div class="at at-water">
         <div class="at-header">
           <h2>Water Temperature</h2>
@@ -365,9 +365,18 @@ function upd() {
 $.getJSON('/measure',function(json){
 $('#wt').html(json.water_temp.toFixed(1).toString());
 $('#at').html(json.air_temp.toFixed(1).toString());
+if (json.air_temp < -100) {
+  $('#atemp').hide();
+}
 $('#ap').html(json.pressure.toFixed().toString());
+if (json.pressure < 500) {
+  $('#pres').hide();
+}
 $('#wl').html(json.water_level.toString());
 $('#hu').html(json.humidity.toFixed(1).toString());
+if (json.humidity < 0) {
+  $('#humid').hide();
+}
 $('#lv').html(json.led.toString());
 $('#fv').html(json.fan.toString());
 if ( json.led > 0) {

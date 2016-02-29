@@ -3,6 +3,8 @@
 
 #include <Adafruit_SSD1306.h>
 #include <RTClib.h>
+#include <Fonts/FreeSansBold9pt7b.h>
+#include <Fonts/FreeSansBold12pt7b.h>
 
 #include "WiFiAquatan.h"
 #include "OLED_pattern.h"
@@ -10,7 +12,11 @@
 #include "ledlight.h"
 #include "fan.h"
 
+#ifdef USE_BME280
+#define NUM_PAGES (9)
+#else
 #define NUM_PAGES (5)
+#endif
 
 class OLEDScreen : public Adafruit_SSD1306 {
   public:
@@ -25,6 +31,12 @@ class OLEDScreen : public Adafruit_SSD1306 {
     void drawClock();
     void drawLogo(int x, int y);
     void drawMeasure();
+    void drawWaterTemp();
+    void drawWaterLevel();
+    void drawAirTemp();
+    void drawPressure();
+    void drawHumidity();
+    void drawLedFan();
     void drawLedStatus();
     void drawFanStatus();
     void drawServerInfo();

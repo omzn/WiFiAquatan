@@ -10,7 +10,7 @@ OLEDScreen::OLEDScreen(Sensors *s, ledLight *l, fanCooler *f) {
 
 void OLEDScreen::setContrast(uint8_t c) {
   ssd1306_command(SSD1306_SETCONTRAST);
-  ssd1306_command(c);  
+  ssd1306_command(c);
 }
 
 void OLEDScreen::onDisplay() {
@@ -34,29 +34,33 @@ void OLEDScreen::changed(bool v) {
 }
 
 void OLEDScreen::drawPage() {
+
+  void (OLEDScreen::*page[])() = {
+#ifdef USE_BME280
+    &OLEDScreen::drawWaterTemp,
+    &OLEDScreen::drawWaterTempGraph,
+    &OLEDScreen::drawAirTemp,
+    &OLEDScreen::drawAirTempGraph,
+    &OLEDScreen::drawPressure,
+    &OLEDScreen::drawHumidity,
+    &OLEDScreen::drawWaterLevel,
+    &OLEDScreen::drawLedFan,
+    &OLEDScreen::drawServerInfo
+#else
+    &OLEDScreen::drawWaterTemp,
+    &OLEDScreen::drawWaterTempGraph,
+    &OLEDScreen::drawLedFan,
+    &OLEDScreen::drawWaterLevel,
+    &OLEDScreen::drawServerInfo
+#endif
+  };
+
   if (changed()) {
     clearDisplay();
   }
-  
-  if (_page == 0) {
-    drawHeader("CURRENT STATUS");
-    drawLogo(96, 16);
-    drawMeasure();
-  } else if (_page == 1) {
-    drawHeader("WATER TEMP LOG");
-    drawWaterTempGraph();
-  } else if (_page == 2) {
-    drawHeader("AIR TEMP LOG");
-#ifdef USE_BME280
-    drawAirTempGraph();
-#endif
-  } else if (_page == 3) {
-    drawHeader("LED & FAN STATUS");
-    drawLedStatus();
-    drawFanStatus();
-  } else if (_page == 4) {
-    drawHeader("NETWORK STATUS");
-    drawServerInfo();
+
+  if (_changed == true) {
+    (this->*page[_page])();
   }
   _changed = false;
 }
@@ -66,13 +70,14 @@ void OLEDScreen::drawLogo(int x, int y) {
 }
 
 void OLEDScreen::drawHeader(String msg) {
-  if (_changed == true) {
-    fillRect(0, 0, 127, 15, WHITE);
-    setCursor(64 - (msg.length() * 3), 3);
-    setTextColor(BLACK, WHITE);
-    print(msg);
-    setTextColor(WHITE, BLACK);
-  }
+  //setFont();
+  setFont(&FreeSansBold9pt7b);
+  fillRect(0, 0, 127, 15, WHITE);
+  setCursor(0, 13);
+  setTextColor(BLACK, WHITE);
+  print(msg);
+  setTextColor(WHITE, BLACK);
+  setFont();
 }
 
 void OLEDScreen::drawClock() {
@@ -80,10 +85,69 @@ void OLEDScreen::drawClock() {
   const static char daysOfTheWeek[7][4] = {"SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"};
   DateTime now;
   now = rtc.now();
-  sprintf(buf,"%4d/%02d/%02d %s %02d:%02d",now.year(),now.month(),now.day(),daysOfTheWeek[now.dayOfTheWeek()],now.hour(),now.minute());
+  sprintf(buf, "%4d/%02d/%02d %s %02d:%02d", now.year(), now.month(), now.day(), daysOfTheWeek[now.dayOfTheWeek()], now.hour(), now.minute());
+  setFont();
   setCursor(6, 57); // Set cursor
   setTextColor(WHITE, BLACK);
   print(buf);
+}
+
+void OLEDScreen::drawWaterTemp() {
+  drawHeader("Water Temp.");
+  drawLogo(96, 16);
+  setFont(&FreeSansBold12pt7b);
+  setCursor(0, 40);
+  print(_sensors->getWaterTemp(), 1);
+  setFont(&FreeSansBold9pt7b);
+  println(" C");
+}
+
+void OLEDScreen::drawAirTemp() {
+  drawHeader("Air Temp.");
+  drawLogo(96, 16);
+  setFont(&FreeSansBold12pt7b);
+  setCursor(0, 40);
+  print(_sensors->getAirTemp(), 1);
+  setFont(&FreeSansBold9pt7b);
+  println("C");
+}
+
+void OLEDScreen::drawPressure() {
+  drawHeader("Pressure");
+  drawLogo(0, 16);
+  setFont(&FreeSansBold12pt7b);
+  setCursor(32, 40);
+  print(_sensors->getPressure(),0);
+  setFont(&FreeSansBold9pt7b);
+  println("hPa");
+}
+
+void OLEDScreen::drawHumidity() {
+  drawHeader("Humidity");
+  drawLogo(0, 16);
+  setFont(&FreeSansBold12pt7b);
+  setCursor(32, 40);
+  print(_sensors->getHumidity(), 1);
+  setFont(&FreeSansBold9pt7b);
+  println("%");
+}
+
+void OLEDScreen::drawLedFan() {
+  drawHeader("LED & Fan");
+  drawLedStatus();
+  drawFanStatus();
+}
+
+void OLEDScreen::drawWaterLevel() {
+  char str[10];
+  drawLogo(96, 16);
+  drawHeader("Water Lv.");
+  setFont(&FreeSansBold12pt7b);
+  setCursor(0, 40);
+  sprintf(str, "%3d", _sensors->getWaterLevel());
+  print(str);
+  setFont(&FreeSansBold9pt7b);
+  println(" cm");
 }
 
 void OLEDScreen::drawMeasure() {
@@ -116,8 +180,10 @@ void OLEDScreen::drawMeasure() {
 }
 
 void OLEDScreen::drawLedStatus() {
-  setCursor(0, 16);
+  setFont(&FreeSansBold9pt7b);
+  setCursor(0, 31);
   print("LED");
+  setFont();
   if (_light->value() > 0) {
     fillCircle(44, 28, 12, WHITE);
     setCursor(39, 25);
@@ -144,8 +210,10 @@ void OLEDScreen::drawLedStatus() {
 }
 
 void OLEDScreen::drawFanStatus() {
-  setCursor(64, 16);
+  setFont(&FreeSansBold9pt7b);
+  setCursor(64, 31);
   print("FAN");
+  setFont();
   if (_fan->value() > 0) {
     fillCircle(108, 28, 12, WHITE);
     setCursor(103, 25);
@@ -174,8 +242,12 @@ void OLEDScreen::drawFanStatus() {
 
 
 void OLEDScreen::drawServerInfo() {
-  setCursor(0, 20);
+  drawHeader("Network");
+  setFont();
+  setCursor(0, 16);
   println("URL");
+  setFont();
+  setCursor(0, 24);
   print("http://");
   print(_sensors->siteName());
   println(".local/");
@@ -183,6 +255,8 @@ void OLEDScreen::drawServerInfo() {
 
 
 void OLEDScreen::drawWaterTempGraph() {
+  drawHeader("Water Temp.");
+  setFont();
   setCursor(0, 16);
   print("W.Temp");
   drawLine(14, 25, 14, 55, WHITE);
@@ -207,6 +281,8 @@ void OLEDScreen::drawWaterTempGraph() {
 }
 
 void OLEDScreen::drawAirTempGraph() {
+  drawHeader("Air Temp.");
+  setFont();
   setCursor(0, 16);
   print("A.Temp");
   drawLine(14, 25, 14, 55, WHITE);

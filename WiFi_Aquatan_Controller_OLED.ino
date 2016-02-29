@@ -158,7 +158,8 @@ void setup() {
 
   oled.display();       // Display what's in the buffer (splashscreen)
   oled.setTextSize(1);  // Set text size 1
-  oled.setTextColor(WHITE, BLACK);
+//  oled.setFont(&FreeSans9pt7b);
+  oled.setTextColor(WHITE, BLACK);  
   delay(10);
 
   if (restoreConfig()) {
@@ -214,6 +215,8 @@ void loop() {
       oled.drawPage();
       oled.drawClock();
       oled.display();       // Refresh the display
+    } else {
+      oled.changed(false);
     }
     delay(500);
     oled.onDisplay();

@@ -22,6 +22,7 @@ void hcsr04_i2c::set_levels(uint8_t low_th, uint8_t high_th) {
   Wire.write(low_th);
   Wire.write(high_th);
   Wire.endTransmission();
+  delay(100);
   Wire.requestFrom(_address, 1); // request 1 bytes
   while (Wire.available() == 0);
   Wire.read();  
