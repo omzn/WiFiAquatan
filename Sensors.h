@@ -37,7 +37,7 @@ class Sensors {
     void waterLevelLimitEmerge(int v);
     String siteName();
     void siteName(String s);
-
+//    void setting();
   private:
     OneWire *ds;
     DallasTemperature *ds18b20;
@@ -61,6 +61,9 @@ class Sensors {
     float   humidityLog[100];
 
     String _sitename;
+
+//    bool    _setWaterLevel = false;
+    
 };
 
 #endif

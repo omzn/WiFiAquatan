@@ -18,6 +18,7 @@ class fanCooler : public attiny_i2c {
     void highLimit(float v);
     void lowLimit(float v);
   protected:
+    uint8_t _state;
     int _use_autofan;
     float _high_limit;
     float _low_limit;

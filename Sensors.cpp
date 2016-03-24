@@ -63,7 +63,8 @@ int Sensors::getWaterLevel() {
 void Sensors::waterLevelLimits(int w, int e) {
   _waterLevelLimitWarn = w;
   _waterLevelLimitEmerge = e;
-  i2cping->set_levels(w, e);
+  i2cping->set_levels(_waterLevelLimitWarn, _waterLevelLimitEmerge);
+//  _setWaterLevel = true;
 }
 
 int Sensors::waterLevelLimitWarn() {
@@ -72,6 +73,8 @@ int Sensors::waterLevelLimitWarn() {
 
 void Sensors::waterLevelLimitWarn(int v) {
   _waterLevelLimitWarn = v;
+  i2cping->set_levels(_waterLevelLimitWarn, _waterLevelLimitEmerge);
+  //_setWaterLevel = true;
 }
 
 int Sensors::waterLevelLimitEmerge() {
@@ -80,6 +83,8 @@ int Sensors::waterLevelLimitEmerge() {
 
 void Sensors::waterLevelLimitEmerge(int v) {
   _waterLevelLimitEmerge = v;
+  i2cping->set_levels(_waterLevelLimitWarn, _waterLevelLimitEmerge);
+  //_setWaterLevel = true;
 }
 
 

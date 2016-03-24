@@ -1,4 +1,3 @@
-
 /*
  * WiFi Aquatan Controller (China OLED version) ***
  *   RTC:  RTC-8564NB or DS1307
@@ -31,19 +30,21 @@
 #include "sensors.h"
 #include "ledlight.h"
 #include "fan.h"
+#include "drv8830_i2c.h"
 #include "OLEDScreen.h"
 
-#define PIN_1WIRE 2
-#define PIN_SDA 4
-#define PIN_SCL 14
-#define PIN_LED 13
-#define PIN_BTN 0
-#define PIN_RTC_INT 5
+#define PIN_1WIRE    (2)
+#define PIN_SDA      (4)
+#define PIN_SCL     (14)
+#define PIN_LED     (13)
+#define PIN_FEED_SW (12)
+#define PIN_BTN      (0)
+#define PIN_RTC_INT  (5)
 
 #define WEB_LED_ON  LOW
 #define WEB_LED_OFF HIGH
 
-#define OLED_BRIGHTNESS        (0x01)
+#define OLED_BRIGHTNESS        (0xff)
 
 #define I2C_PING_ADDRESS       (0x26)
 #define ATTINY85_LED_ADDRESS   (0x27)
@@ -62,9 +63,9 @@
 #define EEPROM_WATER_LEVEL_ADDR    (186)
 #define EEPROM_LAST_ADDR           (188)
 
-#define UDP_LOCAL_PORT 2390
-#define NTP_PACKET_SIZE  48
-#define SECONDS_UTC_TO_JST 32400
+#define UDP_LOCAL_PORT      (2390)
+#define NTP_PACKET_SIZE       (48)
+#define SECONDS_UTC_TO_JST (32400)
 
 const String website_name  = "aqua1";
 const char* apSSID         = "WIFI_AQUATAN";
@@ -79,6 +80,7 @@ String ssidList;
 volatile boolean rtcint;
 uint32_t timer_count = 0;
 uint32_t auto_page = 2;
+byte doRestart = 0;
 byte packetBuffer[NTP_PACKET_SIZE];
 const IPAddress apIP(192, 168, 1, 1);
 DNSServer dnsServer;
@@ -89,14 +91,14 @@ WiFiUDP udp;
 #ifdef USE_RTC8564
 RTC_RTC8564 rtc;
 #else
-RTC_DS1307 rtc;
+RTC_DS1307  rtc;
 #endif
 
 Sensors    sensors;
-ledLight   light(ATTINY85_LED_ADDRESS, ATTINY85_PIN_DIM_LED);
+ledLight   light(ATTINY85_LED_ADDRESS, ATTINY85_PIN_LED);
 fanCooler  fan(ATTINY85_LED_ADDRESS, ATTINY85_PIN_FAN);
 OLEDScreen oled(&sensors, &light, &fan);
-
+drv8830_i2c feeder(0x64);
 /*
  * interrupt handlers
  */
@@ -133,6 +135,8 @@ void setup() {
   sensors.begin();
   sensors.siteName(website_name);
 
+  //  pinMode(PIN_FEED_SW, INPUT_PULLUP);
+
   rtcint = 0;
   if (! rtc.isrunning() ) {
     rtc.adjust(DateTime(2016, 1, 1, 0, 0, 0));
@@ -158,8 +162,8 @@ void setup() {
 
   oled.display();       // Display what's in the buffer (splashscreen)
   oled.setTextSize(1);  // Set text size 1
-//  oled.setFont(&FreeSans9pt7b);
-  oled.setTextColor(WHITE, BLACK);  
+  //  oled.setFont(&FreeSans9pt7b);
+  oled.setTextColor(WHITE, BLACK);
   delay(10);
 
   if (restoreConfig()) {
@@ -223,9 +227,15 @@ void loop() {
   }
 
   if (rtcint == 1) {
+#ifdef DEBUG
+    Serial.println("regular interval:");
+#endif
     oled.drawClock();
     if (!settingMode) {
       sensors.readData();
+#ifdef DEBUG
+      Serial.println("sensors.readData:");
+#endif
       oled.drawPage();
 
       if (timer_count % 3600 == 0) {
@@ -241,26 +251,35 @@ void loop() {
       }
 
 
-      if (timer_count % 900 == 0) {
-        sensors.logData();
-      }
+//      if (timer_count % 900 == 0) {
+//        sensors.logData();
+//      }
 
-      if (timer_count % 10 == 0) {
-        light.heartbeat();
-      }
+//      if (timer_count % 10 == 0) {
+//        light.heartbeat();
+//      }
 
       if (timer_count % 15 == 14) {
         if (auto_page > 1) {
-           oled.incPage();
+          oled.incPage();
         } else {
-           auto_page++;
+          auto_page++;
 #ifdef DEBUG
-        Serial.print("auto_page:");
-        Serial.println(auto_page);
+          Serial.print("auto_page:");
+          Serial.println(auto_page);
 #endif
         }
       }
 
+    } else { // if setting mode remains 180 seconds
+      if (timer_count % 180 == 179) {
+        ESP.restart();
+      }
+      if (doRestart == 1) {
+        if (timer_count > 10) {
+          ESP.restart();        
+        }
+      }
     }
     oled.display();       // Refresh the display
 
@@ -389,9 +408,10 @@ boolean restoreConfig() {
 
   int lv_wa = EEPROM.read(EEPROM_WATER_LEVEL_ADDR);
   int lv_em = EEPROM.read(EEPROM_WATER_LEVEL_ADDR + 1);
-  sensors.waterLevelLimitWarn(lv_wa);
-  sensors.waterLevelLimitEmerge(lv_em);
-
+  // sensors.waterLevelLimitWarn(lv_wa);
+  // sensors.waterLevelLimitEmerge(lv_em);
+  sensors.waterLevelLimits(lv_wa,lv_em);
+  
   use_twitter  = EEPROM.read(EEPROM_TWITTER_CONFIG_ADDR) == 1 ? 1 : 0;
   if (EEPROM.read(EEPROM_TWITTER_TOKEN_ADDR) != 0) {
     stewgate_token = "";
@@ -442,9 +462,9 @@ boolean restoreConfig() {
 
 boolean checkConnection() {
   int count = 0;
-  while ( count < 40 ) {
+  while ( count < 60 ) {
     if (WiFi.status() == WL_CONNECTED) {
-      return (true);
+      return true;
     }
     delay(500);
 #ifdef DEBUG
@@ -497,7 +517,7 @@ bool post_tweet(String msg) {
 
 void startWebServer_setting() {
   oled.clearDisplay();     // Clear the page
-  oled.drawHeader("SETTING MODE");
+  oled.drawHeader("SETTING");
   oled.setCursor(0, 20); // Set cursor
   oled.print("Connect SSID:");
   oled.println(apSSID);
@@ -540,15 +560,15 @@ void startWebServer_setting() {
       }
     }
     EEPROM.commit();
-    String s = "<h2>Setup complete</h2> <p>Device will be connected to \"";
+    String s = "<h2>Setup complete</h2><p>Device will be connected to \"";
     s += ssid;
     s += "\" after the restart.</p><p>Your computer also need to re-connect to \"";
     s += ssid;
     s += "\".</p><p><button class=\"pure-button\" onclick=\"return quitBox();\">Close</button></p>";
     s += "<script>function quitBox() { open(location, '_self').close();return false;};setTimeout(\"quitBox()\",10000);</script>";
     webServer.send(200, "text/html", makePage("Wi-Fi Settings", s));
-    //    delay(15000);
-    //    ESP.restart();
+    doRestart = 1;
+    timer_count = 0;
   });
   webServer.on("/pure.css", handleCss);
   webServer.onNotFound([]() {
@@ -620,8 +640,8 @@ void startWebServer_normal() {
     s += "<p><button class=\"pure-button\" onclick=\"return quitBox();\">Close</button></p>";
     s += "<script>function quitBox() { open(location, '_self').close();return false;};</script>";
     webServer.send(200, "text/html", makePage("Reset ALL Settings", s));
-//    delay(10000);
-//    ESP.restart();
+    doRestart = 1;
+    timer_count = 0;
   });
   webServer.on("/wifireset", []() {
     for (int i = 0; i < EEPROM_MDNS_ADDR; ++i) {
@@ -632,8 +652,8 @@ void startWebServer_normal() {
     s += "<p><button class=\"pure-button\" onclick=\"return quitBox();\">Close</button></p>";
     s += "<script>function quitBox() { open(location, '_self').close();return false;}</script>";
     webServer.send(200, "text/html", makePage("Reset WiFi Settings", s));
-//    delay(10000);
-//    ESP.restart();
+    doRestart = 1;
+    timer_count = 0;
   });
   webServer.on("/", handleRoot);
   webServer.on("/pure.css", handleCss);
@@ -675,6 +695,8 @@ void handleCss() {
 void handleMeasure() {
   digitalWrite(PIN_LED, WEB_LED_ON);
   String message;
+  char buf1[6],buf2[6] ;
+
   DynamicJsonBuffer jsonBuffer;
   JsonObject& json = jsonBuffer.createObject();
 
@@ -683,8 +705,21 @@ void handleMeasure() {
   json["pressure"] = sensors.getPressure();
   json["humidity"] = sensors.getHumidity();
   json["water_level"] = sensors.getWaterLevel();
+  if (sensors.getWaterLevel() >= sensors.waterLevelLimitWarn()) {
+    if  (sensors.getWaterLevel() >= sensors.waterLevelLimitEmerge()) {
+      json["water_level_status"] = "emerge";
+    } else {
+      json["water_level_status"] = "warn";
+    }
+  } else {
+      json["water_level_status"] = "normal";    
+  }
   json["led"] = light.value();
   json["fan"] = fan.value();
+  sprintf(buf1, "%02d:%02d", light.on_h(), light.on_m());
+  json["led_ontime"] = buf1;
+  sprintf(buf2, "%02d:%02d", light.off_h(), light.off_m());
+  json["led_offtime"] = buf2;
   json.printTo(message);
   webServer.send(200, "application/json", message);
   digitalWrite(PIN_LED, WEB_LED_OFF);
@@ -694,6 +729,7 @@ void handleMeasure() {
 void handleConfig() {
   digitalWrite(PIN_LED, WEB_LED_ON);
   String message;
+
   DynamicJsonBuffer jsonBuffer;
   JsonObject& json = jsonBuffer.createObject();
 
@@ -792,10 +828,10 @@ void handleAutofan() {
   }
 
   if (hi_l != fan.highLimit() || lo_l != fan.lowLimit()) {
-    EEPROM.write(EEPROM_AUTOFAN_ADDR + 1, (hi_l_i       & 0xFF));
-    EEPROM.write(EEPROM_AUTOFAN_ADDR + 2, (hi_l_i >> 8  & 0xFF));
-    EEPROM.write(EEPROM_AUTOFAN_ADDR + 3, (lo_l_i       & 0xFF));
-    EEPROM.write(EEPROM_AUTOFAN_ADDR + 4, (lo_l_i >> 8  & 0xFF));
+    EEPROM.write(EEPROM_AUTOFAN_ADDR + 1, char(hi_l_i       & 0xFF));
+    EEPROM.write(EEPROM_AUTOFAN_ADDR + 2, char(hi_l_i >> 8  & 0xFF));
+    EEPROM.write(EEPROM_AUTOFAN_ADDR + 3, char(lo_l_i       & 0xFF));
+    EEPROM.write(EEPROM_AUTOFAN_ADDR + 4, char(lo_l_i >> 8  & 0xFF));
     fan.highLimit(hi_l);
     fan.lowLimit(lo_l);
     EEPROM.commit();
@@ -819,14 +855,18 @@ void handleWaterLevel() {
 
   if (lv_wa != sensors.waterLevelLimitWarn() || lv_em != sensors.waterLevelLimitEmerge()) {
     sensors.waterLevelLimits(lv_wa,lv_em);
-    EEPROM.write(EEPROM_WATER_LEVEL_ADDR + 0, lv_wa);
-    EEPROM.write(EEPROM_WATER_LEVEL_ADDR + 1, lv_em);
+    // hcsr04を制御するATtiny85において，EEPROMを書き換える命令を発行するとi2cがjamする．
+    EEPROM.write(EEPROM_WATER_LEVEL_ADDR + 0, char(lv_wa));
+    EEPROM.write(EEPROM_WATER_LEVEL_ADDR + 1, char(lv_em));
     EEPROM.commit();
   }
   json["lv_wa"] = lv_wa;
   json["lv_em"] = lv_em;
   json.printTo(message);
   webServer.send(200, "application/json", message);
+#ifdef DEBUG
+  Serial.println("WaterLevel Set. sent json.");
+#endif
   digitalWrite(PIN_LED, WEB_LED_OFF);
 }
 
@@ -869,6 +909,7 @@ void handleAction() {
   JsonObject& json = jsonBuffer.createObject();
   String ledstr = webServer.arg("led");
   String fanstr = webServer.arg("fan");
+  String feedstr = webServer.arg("feed");
 
   if (ledstr != "") {
     if (ledstr == "on") {
@@ -888,6 +929,41 @@ void handleAction() {
       fan.value(fanstr.toInt());
     }
   }
+  if (feedstr != "") {
+    if (feedstr == "on") {
+      feeder.clearFault();
+      feeder.startMotor(0x3e,0x01);
+    } else if (feedstr == "off") {
+      feeder.floatMotor();
+    }
+  }
+
+/*     
+  if (feedstr != "") {
+    if (feedstr.toInt() >= 1 && feedstr.toInt() <= 2) {
+ //     feed.value(fanstr.toInt());
+      fault(0x64,0);
+      motor(0x64,0x2f,0x01);  // start
+      uint8_t count = 0;
+      while (digitalRead(PIN_FEED_SW) == 1) { // skip SW == 1
+        count++;
+        if (count > 1500) {
+          break;
+        }
+        delay(10);
+      }
+      while (digitalRead(PIN_FEED_SW) == 0) { // wait until SW == 1
+        count++;
+        if (count > 1500) {
+          break;
+        }
+        delay(10);
+      }
+      motor(0x64,0x00,0x00);  // stop
+      motor(0x64,0x00,0x03);  // break    
+    }
+  }
+*/
 
   json["led"] = light.value();
   json["fan"] = fan.value();

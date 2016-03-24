@@ -5,6 +5,7 @@
 #include <RTClib.h>
 #include <Fonts/FreeSansBold9pt7b.h>
 #include <Fonts/FreeSansBold12pt7b.h>
+#include <ESP8266WiFi.h>
 
 #include "WiFiAquatan.h"
 #include "OLED_pattern.h"
@@ -13,9 +14,9 @@
 #include "fan.h"
 
 #ifdef USE_BME280
-#define NUM_PAGES (9)
+#define NUM_PAGES (7)
 #else
-#define NUM_PAGES (5)
+#define NUM_PAGES (4)
 #endif
 
 class OLEDScreen : public Adafruit_SSD1306 {
@@ -44,7 +45,6 @@ class OLEDScreen : public Adafruit_SSD1306 {
     void drawAirTempGraph();
     bool changed();
     void changed(bool v);
-
   private:
     Sensors   *_sensors;
     ledLight  *_light;

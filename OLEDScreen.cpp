@@ -16,6 +16,7 @@ void OLEDScreen::setContrast(uint8_t c) {
 void OLEDScreen::onDisplay() {
   ssd1306_command(0xAF);
 }
+
 void OLEDScreen::offDisplay() {
   ssd1306_command(0xAE);
 }
@@ -38,9 +39,9 @@ void OLEDScreen::drawPage() {
   void (OLEDScreen::*page[])() = {
 #ifdef USE_BME280
     &OLEDScreen::drawWaterTemp,
-    &OLEDScreen::drawWaterTempGraph,
+//    &OLEDScreen::drawWaterTempGraph,
     &OLEDScreen::drawAirTemp,
-    &OLEDScreen::drawAirTempGraph,
+//    &OLEDScreen::drawAirTempGraph,
     &OLEDScreen::drawPressure,
     &OLEDScreen::drawHumidity,
     &OLEDScreen::drawWaterLevel,
@@ -48,21 +49,18 @@ void OLEDScreen::drawPage() {
     &OLEDScreen::drawServerInfo
 #else
     &OLEDScreen::drawWaterTemp,
-    &OLEDScreen::drawWaterTempGraph,
-    &OLEDScreen::drawLedFan,
+//    &OLEDScreen::drawWaterTempGraph,
     &OLEDScreen::drawWaterLevel,
+    &OLEDScreen::drawLedFan,
     &OLEDScreen::drawServerInfo
 #endif
   };
 
   if (changed()) {
     clearDisplay();
+    changed(false);
   }
-
-  if (_changed == true) {
-    (this->*page[_page])();
-  }
-  _changed = false;
+  (this->*page[_page])();
 }
 
 void OLEDScreen::drawLogo(int x, int y) {
@@ -96,7 +94,9 @@ void OLEDScreen::drawWaterTemp() {
   drawHeader("Water Temp.");
   drawLogo(96, 16);
   setFont(&FreeSansBold12pt7b);
+  fillRect(0, 16, 95, 40, BLACK);
   setCursor(0, 40);
+  setTextColor(WHITE, BLACK);
   print(_sensors->getWaterTemp(), 1);
   setFont(&FreeSansBold9pt7b);
   println(" C");
@@ -107,6 +107,8 @@ void OLEDScreen::drawAirTemp() {
   drawLogo(96, 16);
   setFont(&FreeSansBold12pt7b);
   setCursor(0, 40);
+  setTextColor(WHITE, BLACK);
+  fillRect(0, 16, 95, 40, BLACK);
   print(_sensors->getAirTemp(), 1);
   setFont(&FreeSansBold9pt7b);
   println("C");
@@ -116,7 +118,9 @@ void OLEDScreen::drawPressure() {
   drawHeader("Pressure");
   drawLogo(0, 16);
   setFont(&FreeSansBold12pt7b);
+  fillRect(32, 16, 127, 40, BLACK);
   setCursor(32, 40);
+  setTextColor(WHITE, BLACK);
   print(_sensors->getPressure(),0);
   setFont(&FreeSansBold9pt7b);
   println("hPa");
@@ -126,7 +130,9 @@ void OLEDScreen::drawHumidity() {
   drawHeader("Humidity");
   drawLogo(0, 16);
   setFont(&FreeSansBold12pt7b);
+  fillRect(32, 16, 127, 40, BLACK);
   setCursor(32, 40);
+  setTextColor(WHITE, BLACK);
   print(_sensors->getHumidity(), 1);
   setFont(&FreeSansBold9pt7b);
   println("%");
@@ -143,7 +149,9 @@ void OLEDScreen::drawWaterLevel() {
   drawLogo(96, 16);
   drawHeader("Water Lv.");
   setFont(&FreeSansBold12pt7b);
+  fillRect(0, 16, 95, 40, BLACK);
   setCursor(0, 40);
+  setTextColor(WHITE, BLACK);
   sprintf(str, "%3d", _sensors->getWaterLevel());
   print(str);
   setFont(&FreeSansBold9pt7b);
@@ -185,15 +193,15 @@ void OLEDScreen::drawLedStatus() {
   print("LED");
   setFont();
   if (_light->value() > 0) {
-    fillCircle(44, 28, 12, WHITE);
-    setCursor(39, 25);
+    fillCircle(48, 28, 12, WHITE);
+    setCursor(43, 25);
     setTextColor(BLACK, WHITE); // 'inverted' text
     print("ON");
     setTextColor(WHITE, BLACK);
   } else {
-    drawCircle(44, 28, 11, WHITE);
-    drawCircle(44, 28, 12, WHITE);
-    setCursor(36, 25);
+    drawCircle(48, 28, 11, WHITE);
+    drawCircle(48, 28, 12, WHITE);
+    setCursor(40, 25);
     setTextColor(WHITE);
     print("OFF");
     setTextColor(WHITE, BLACK);
@@ -215,15 +223,15 @@ void OLEDScreen::drawFanStatus() {
   print("FAN");
   setFont();
   if (_fan->value() > 0) {
-    fillCircle(108, 28, 12, WHITE);
-    setCursor(103, 25);
+    fillCircle(112, 28, 12, WHITE);
+    setCursor(107, 25);
     setTextColor(BLACK, WHITE); // 'inverted' text
     print("ON");
     setTextColor(WHITE, BLACK);
   } else {
-    drawCircle(108, 28, 11, WHITE);
-    drawCircle(108, 28, 12, WHITE);
-    setCursor(100, 25);
+    drawCircle(112, 28, 11, WHITE);
+    drawCircle(112, 28, 12, WHITE);
+    setCursor(104, 25);
     setTextColor(WHITE);
     print("OFF");
     setTextColor(WHITE, BLACK);
@@ -247,10 +255,11 @@ void OLEDScreen::drawServerInfo() {
   setCursor(0, 16);
   println("URL");
   setFont();
-  setCursor(0, 24);
-  print("http://");
+  setCursor(8, 24);
   print(_sensors->siteName());
-  println(".local/");
+  println(".local");
+  setCursor(8, 32);
+  println(WiFi.localIP());
 }
 
 
@@ -305,6 +314,5 @@ void OLEDScreen::drawAirTempGraph() {
     }
   }
 }
-
 
 
