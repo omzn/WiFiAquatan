@@ -15,20 +15,24 @@ How to assemble
 -----------
 
 
-
+prepare IDE
+-----------
+* http://ehbtj.com/electronics/esp8266-as-arduino
+* https://www.mgo-tec.com/spiffs-filesystem-uploader01-html
 
 How to use
 -----------
 1. Modify the #define in WiFiAquatan.h.
 If you do not use BME280, comment out #define USE_BME280.
 2. Compile and upload to your WiFi aquatan.
-3. Connect your computer to the WiFi access point "WIFI_AQUATAN".
-4. A dialog will come up, and select and configure your WiFi access point.
-5. Reboot device. (Left SW)
-6. Current status of the tank will come up.
-7. Right SW toggles screens. You will find URL for WiFi aquatan in the last screen.
-8. Access the URL with your browser.
-9. Click show settings.
-10. Set lighting schedule, automatic fan control, and water level of warnings.
-11. (Sometimes wifi aquatan freezes after setting. Then press reset SW (left SW).)
+3. Upload html contents to WiFi aquatan using "ESP8266 Sketch data upload"
+4. Connect your computer to the WiFi access point "WIFI_AQUATAN".
+5. A dialog will come up, and select and configure your WiFi access point.
+6. Reboot device. (Left SW)
+7. Current status of the tank will come up.
+8. Right SW toggles screens. You will find URL for WiFi aquatan in the last screen.
+9. Access the URL with your browser.
+10. Click show settings.
+11. Set lighting schedule, automatic fan control, and water level of warnings.
+12. (Sometimes wifi aquatan freezes after setting. Then press reset SW (left SW).)
 
