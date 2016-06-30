@@ -15,10 +15,12 @@ How to assemble
 -----------
 
 
-prepare IDE
+Prepare IDE
 -----------
 * http://ehbtj.com/electronics/esp8266-as-arduino
 * https://www.mgo-tec.com/spiffs-filesystem-uploader01-html
+
+* set Flash size as 1M (256K SPIFFS)
 
 How to use
 -----------
