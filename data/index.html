@@ -109,6 +109,18 @@
       </div>
     </div>
 
+    <div id="pump" class="pure-u-1 pure-u-md-1-3">
+      <div class="at at-fan">
+        <div class="at-header">
+          <h2>Pump</h2>
+	  
+          <span class="at-val">
+            <div id="ps">OFF</div><span id="pv">0</span>
+          </span>
+        </div>
+      </div>
+    </div>
+
   </div> <!-- end a-t -->
 
   <div class="pure-g">
@@ -156,6 +168,17 @@
 		  <div class="pure-u-1 pure-u-md-3-5">
 		  </div>
 		</div>
+
+		<legend>Turn on/off duration</legend>
+		<div class="pure-g">
+		  <div class="pure-u-1 pure-u-md-1-1">
+		    <input id="use_slow" value="1" type="checkbox"> Turn on/off slowly
+		  </div>
+		  <div class="pure-u-1 pure-u-md-1-5">
+		    <input id="duration" class="pure-u-22-24" type="text" placeholder="seconds">
+		  </div>
+		</div>
+
 		<button id="ssub" type="submit" class="pure-button pure-button-primary">Submit</button>
 	      </fieldset>
 	    </form>
@@ -165,12 +188,12 @@
 
       <div id="thres" class="pure-u-1 pure-u-md-1-2">
         <div class="l-box">
-          <h3 class="if-head">Auto fan control</h3>
+          <h3 class="if-head">Fan control</h3>
           <p>Set the temperature limits for activating cooling fan. The cooling fan tries to maintain the water temperature between the higher and lower limits. </p>
 	  <p>
 	    <form id="autofan" class="pure-form pure-form-stacked">
 	      <fieldset>
-		<legend>Temperature control</legend>
+		<legend>Automatic fan control</legend>
 		<div class="pure-g">
 		  <div class="pure-u-1 pure-u-md-1-1">
 		    <input id="use_autofan" value="1" type="checkbox"> Enable
@@ -197,19 +220,25 @@
       <div id="wlevel" class="pure-u-1 pure-u-md-1-2">
         <div class="l-box">
           <h3 class="if-head">Water Level</h3>
-          <p>Set the water levels to notify warning and emergency. The bi-color LED lights in orange for warning and in red for emergency.</p>
+          <p>Set the water levels to notify full and low water. The bi-color LED lights in green for normal, orange for full, and red for low level.</p>
 	  <p>
 	    <form id="wlv" class="pure-form pure-form-stacked">
 	      <fieldset>
+		<legend>Automatic pump control</legend>
+		<div class="pure-g">
+		  <div class="pure-u-1 pure-u-md-1-1">
+		    <input id="use_pump" value="1" type="checkbox"> Enable
+		  </div>
+		</div>
 		<legend>Water levels</legend>
 		<div class="pure-g">
 		  <div class="pure-u-1 pure-u-md-1-2">
-		    <label for="lv_wa">Warning</label>
-		    <input id="lv_wa" class="pure-u-20-24" type="text" placeholder="Level (cm)">
+		    <label for="lv_hi">Full</label>
+		    <input id="lv_hi" class="pure-u-20-24" type="text" placeholder="Level (cm)">
 		  </div>
 		  <div class="pure-u-1 pure-u-md-1-2">
-		    <label for="lv_em">Emergency</label>
-		    <input id="lv_em" class="pure-u-20-24" type="text" placeholder="Level (cm)">
+		    <label for="lv_lo">Low</label>
+		    <input id="lv_lo" class="pure-u-20-24" type="text" placeholder="Level (cm)">
 		  </div>
 		</div>
 		<button id="wsub" type="submit" class="pure-button pure-button-primary">Submit</button>
@@ -277,273 +306,349 @@
 </div> <!-- end l-content -->
 <div class="footer l-box">
     <p>
-        WiFi Aquatan Monitor by @omzn 2015 / All rights researved
+        WiFi Aquatan Monitor by @omzn 2015-2016 / All rights researved
     </p>
 </div>
 <script type="text/javascript">
 
 $(function(){
-$('a[href^=#]').click(function() {
-var speed = 400;
-var href= $(this).attr("href");
-var target = $(href == "#" || href == "" ? 'html' : href);
-var position = target.offset().top - 48;
-$('body,html').animate({scrollTop:position}, speed, 'swing');
-return false;
-});
-});
-
-$('form#schedule').submit(function(ev) {$.post('/schedule',
-"use_schedule="+$('#use_schedule').prop('checked').toString()+
-"&on_h="+$('#on_h').val()+"&on_m="+$('#on_m').val()+
-"&off_h="+$('#off_h').val()+"&off_m="+$('#off_m').val(),
-read1,"json");
-$('#ssub').prop('disabled', true);
-return false;
+    $('a[href^=#]').click(function() {
+	var speed = 400;
+	var href= $(this).attr("href");
+	var target = $(href == "#" || href == "" ? 'html' : href);
+	var position = target.offset().top - 48;
+	$('body,html').animate({scrollTop:position}, speed, 'swing');
+	return false;
+    });
 });
 
-$('form#autofan').submit(function(ev) {$.post('/autofan',
-"use_autofan="+$('#use_autofan').prop('checked').toString()+
-"&hi_l="+$('#hi_l').val()+"&lo_l="+$('#lo_l').val(),
-read2,"json");
-$('#tsub').prop('disabled', true);
-return false;
-});
+$('form#schedule').submit(
+    function(ev) {
+	$.post('/schedule',
+	       "use_schedule="+$('#use_schedule').prop('checked').toString()+
+	       "&on_h="+$('#on_h').val()+"&on_m="+$('#on_m').val()+
+	       "&off_h="+$('#off_h').val()+"&off_m="+$('#off_m').val()+
+	       "&use_slow="+$('#use_slow').prop('checked').toString()+
+	       "&duration="+$('#duration').val(),
+	       read1,"json");
+	$('#ssub').prop('disabled', true);
+	return false;
+    });
 
-$('form#wlv').submit(function(ev) {$.post('/wlevel',
-"lv_em="+$('#lv_em').val()+"&lv_wa="+$('#lv_wa').val(),
-read4,"json");
-$('#wsub').prop('disabled', true);
-return false;
-});
+$('form#autofan').submit(
+    function(ev) {
+	$.post('/autofan',
+	       "use_autofan="+$('#use_autofan').prop('checked').toString()+
+	       "&hi_l="+$('#hi_l').val()+"&lo_l="+$('#lo_l').val(),
+	       read2,"json");
+	$('#tsub').prop('disabled', true);
+	return false;
+    });
 
-$('form#twitconf').submit(function(ev) {$.post('/twitconf',
-"use_twitter="+$('#use_twitter').prop('checked').toString()+
-"&stew_token="+$('#stew_token').val(),
-read3,"json");
-$('#twsub').prop('disabled', true);
-return false;
-});
+$('form#wlv').submit(
+    function(ev) {
+	$.post('/wlevel',
+	       "use_pump="+$('#use_pump').prop('checked').toString()+
+	       "&lv_lo="+$('#lv_lo').val()+"&lv_hi="+$('#lv_hi').val(),
+	       read4,"json");
+	$('#wsub').prop('disabled', true);
+	return false;
+    });
+
+$('form#twitconf').submit(
+    function(ev) {
+	$.post('/twitconf',
+	       "use_twitter="+$('#use_twitter').prop('checked').toString()+
+	       "&stew_token="+$('#stew_token').val(),
+	       read3,"json");
+	$('#twsub').prop('disabled', true);
+	return false;
+    });
 
 function read1(json){
-$('#on_h').val(json.on_h);
-$('#on_m').val(json.on_m);
-$('#off_h').val(json.off_h);
-$('#off_m').val(json.off_m);
-if (json.use_schedule == 1) {
-$('#use_schedule').prop("checked",true);
-} else {
-$('#use_schedule').prop("checked",false);
-}
+    $('#on_h').val(json.on_h);
+    $('#on_m').val(json.on_m);
+    $('#off_h').val(json.off_h);
+    $('#off_m').val(json.off_m);
+    if (json.use_schedule == 1) {
+	$('#use_schedule').prop("checked",true);
+    } else {
+	$('#use_schedule').prop("checked",false);
+    }
+    if (json.use_slow == 1) {
+	$('#use_slow').prop("checked",true);
+    } else {
+	$('#use_slow').prop("checked",false);
+    }
+    $('#duration').val(json.duration);
 }
 
 function read2(json){
-$('#hi_l').val(json.hi_l);
-$('#lo_l').val(json.lo_l);
-if (json.use_autofan == 1) {
-$('#use_autofan').prop("checked",true);
-} else {
-$('#use_tnctl').prop("checked",false);
-}
+    $('#hi_l').val(json.hi_l);
+    $('#lo_l').val(json.lo_l);
+    if (json.use_autofan == 1) {
+	$('#use_autofan').prop("checked",true);
+    } else {
+	$('#use_tnctl').prop("checked",false);
+    }
 }
 
 function read3(json) {
-$('#stew_token').val(json.stew_token);
-if (json.use_twitter == 1) {
-$('#use_twitter').prop("checked",true);
-} else {
-$('#use_twitter').prop("checked",false);
-}
+    $('#stew_token').val(json.stew_token);
+    if (json.use_twitter == 1) {
+      $('#use_twitter').prop("checked",true);
+    } else {
+	$('#use_twitter').prop("checked",false);
+    }
 }
 
 function read4(json){
-$('#lv_wa').val(json.lv_wa);
-$('#lv_em').val(json.lv_em);
+    $('#lv_hi').val(json.lv_hi);
+    $('#lv_lo').val(json.lv_lo);
+    if (json.use_pump == 1) {
+	$('#use_pump').prop("checked",true);
+    } else {
+	$('#use_pump').prop("checked",false);
+    }
 }
 
 function upd() {
-$.getJSON('/measure',function(json){
-$('#wt').html(json.water_temp.toFixed(1).toString());
-$('#at').html(json.air_temp.toFixed(1).toString());
-if (json.air_temp < -100) {
-  $('#atemp').hide();
-}
-$('#ap').html(json.pressure.toFixed().toString());
-if (json.pressure < 500) {
-  $('#pres').hide();
-}
-$('#wl').html(json.water_level.toString());
-$('#hu').html(json.humidity.toFixed(1).toString());
-if (json.humidity < 0) {
-  $('#humid').hide();
-}
-$('#lv').html(json.led.toString());
-$('#fv').html(json.fan.toString());
-if ( json.led > 0) {
-$('#ls').html("ON");
-} else {
-$('#ls').html("OFF");
-}
-if ( json.fan > 0) {
-$('#fs').html("ON");
-} else {
-$('#fs').html("OFF");
-}
-});
+    $.getJSON('/measure',function(json){
+	$('#wt').html(json.water_temp.toFixed(1).toString());
+	$('#at').html(json.air_temp.toFixed(1).toString());
+	if (json.air_temp < -100) {
+	    $('#atemp').hide();
+	}
+	$('#ap').html(json.pressure.toFixed().toString());
+	if (json.pressure < 500) {
+	    $('#pres').hide();
+	}
+	$('#wl').html(json.water_level.toString());
+	$('#hu').html(json.humidity.toFixed(1).toString());
+	if (json.humidity < 0) {
+	    $('#humid').hide();
+	}
+	$('#lv').html(json.led.toString());
+	$('#fv').html(json.fan.toString());
+	if ( json.led > 0) {
+	    $('#ls').html("ON");
+	} else {
+	    $('#ls').html("OFF");
+	}
+	if ( json.fan > 0) {
+	    $('#fs').html("ON");
+	} else {
+	    $('#fs').html("OFF");
+	}
+	if(json.pump == null) {
+	    $('#pump').hide();
+	} else {
+	    if ( json.pump > 0) {
+		$('#ps').html("ON");
+	    } else {
+		$('#ps').html("OFF");
+	    }
+	}
+    });
 }
 
 function confset() {
-$.getJSON('/config',function(json){
-read1(json);
-read2(json);
-read3(json);
-read4(json);
-if($('#use_autofan').is(":checked")){
-$('#hi_l').prop('disabled', false);
-$('#lo_l').prop('disabled', false);
-} else {
-$('#tsub').prop('disabled', true);
-$('#hi_l').prop('disabled', true);
-$('#lo_l').prop('disabled', true);
-}
-if($('#use_schedule').is(":checked")){
-$('#on_h').prop('disabled', false);
-$('#on_m').prop('disabled', false);
-$('#off_h').prop('disabled', false);
-$('#off_m').prop('disabled', false);
-} else {
-$('#ssub').prop('disabled', true);
-$('#on_h').prop('disabled', true);
-$('#on_m').prop('disabled', true);
-$('#off_h').prop('disabled', true);
-$('#off_m').prop('disabled', true);
-}
-if($('#use_twitter').is(":checked")){
-$('#stew_token').prop('disabled', false);
-} else {
-$('#twsub').prop('disabled', true);
-$('#stew_token').prop('disabled', true);
-}
-});
+    $.getJSON('/config',function(json){
+	read1(json);
+	read2(json);
+	read3(json);
+	read4(json);
+	if($('#use_autofan').is(":checked")){
+	    $('#hi_l').prop('disabled', false);
+	    $('#lo_l').prop('disabled', false);
+	} else {
+	    $('#tsub').prop('disabled', true);
+	    $('#hi_l').prop('disabled', true);
+	    $('#lo_l').prop('disabled', true);
+	}
+	if($('#use_schedule').is(":checked")){
+	    $('#on_h').prop('disabled', false);
+	    $('#on_m').prop('disabled', false);
+	    $('#off_h').prop('disabled', false);
+	    $('#off_m').prop('disabled', false);
+	    $('#use_slow').prop('disabled', false);
+	    if($('#use_slow').is(":checked")){
+		$('#duration').prop('disabled', false);
+	    } else {
+		$('#duration').prop('disabled', true);    
+	    }
+	} else {
+	    $('#ssub').prop('disabled', true);
+	    $('#on_h').prop('disabled', true);
+	    $('#on_m').prop('disabled', true);
+	    $('#off_h').prop('disabled', true);
+	    $('#off_m').prop('disabled', true);
+	    $('#use_slow').prop('disabled', true);
+	    $('#duration').prop('disabled', true);    
+	}
+	if($('#use_twitter').is(":checked")){
+	    $('#stew_token').prop('disabled', false);
+	} else {
+	    $('#twsub').prop('disabled', true);
+	    $('#stew_token').prop('disabled', true);
+	}
+    });
 }
 
 $(function() {
+    $('#use_schedule').click(function(){
+	if($(this).is(":checked")){
+	    $('#on_h').prop('disabled', false);
+	    $('#on_m').prop('disabled', false);
+	    $('#off_h').prop('disabled', false);
+	    $('#off_m').prop('disabled', false);
+	    $('#use_slow').prop('disabled', false);
+	    if($('#use_slow').is(":checked")){
+		$('#duration').prop('disabled', false);
+	    } else {
+		$('#duration').prop('disabled', true);    
+	    }
+	} else if($(this).is(":not(:checked)")){
+	    $('#ssub').prop('disabled', true);
+	    $('#on_h').prop('disabled', true);
+	    $('#on_m').prop('disabled', true);
+	    $('#off_h').prop('disabled', true);
+	    $('#off_m').prop('disabled', true);
+	    $('#use_slow').prop('disabled', true);
+	    $('#duration').prop('disabled', true);    
+	    $.post('/schedule',
+		   "use_schedule="+$('#use_schedule').prop('checked').toString()+
+		   "&on_h="+$('#on_h').val()+"&on_m="+$('#on_m').val()+
+		   "&off_h="+$('#off_h').val()+"&off_m="+$('#off_m').val()+
+		   "&use_slow="+$('#use_slow').prop('checked').toString()+
+		   "&duration="+$('#duration').val(),
+		   read1,"json");
+	}
+    });
 
-$('#use_schedule').click(function(){
-if($(this).is(":checked")){
-$('#on_h').prop('disabled', false);
-$('#on_m').prop('disabled', false);
-$('#off_h').prop('disabled', false);
-$('#off_m').prop('disabled', false);
-} else if($(this).is(":not(:checked)")){
-$('#ssub').prop('disabled', true);
-$('#on_h').prop('disabled', true);
-$('#on_m').prop('disabled', true);
-$('#off_h').prop('disabled', true);
-$('#off_m').prop('disabled', true);
-$.post('/schedule',
-"use_schedule="+$('#use_schedule').prop('checked').toString()+
-"&on_h="+$('#on_h').val()+"&on_m="+$('#on_m').val()+
-"&off_h="+$('#off_h').val()+"&off_m="+$('#off_m').val(),
-read1,"json");
-}
-});
+    $('#use_slow').click(function(){
+	if($(this).is(":checked")){
+	    $('#duration').prop('disabled', false);
+	} else {
+	    $('#duration').prop('disabled', true);    
+	    $.post('/schedule',
+		   "use_schedule="+$('#use_schedule').prop('checked').toString()+
+		   "&on_h="+$('#on_h').val()+"&on_m="+$('#on_m').val()+
+		   "&off_h="+$('#off_h').val()+"&off_m="+$('#off_m').val()+
+		   "&use_slow="+$('#use_slow').prop('checked').toString()+
+		   "&duration="+$('#duration').val(),
+		   read1,"json");
+	}
+    });
+    
+    $('#use_autofan').click(function(){
+	if($(this).is(":checked")){
+	    $('#hi_l').prop('disabled', false);
+	    $('#lo_l').prop('disabled', false);
+	} else if($(this).is(":not(:checked)")){
+	    $('#tsub').prop('disabled', true);
+	    $('#hi_l').prop('disabled', true);
+	    $('#lo_l').prop('disabled', true);
+	    $.post('/autofan',
+		   "use_autofan="+$('#use_autofan').prop('checked').toString()+
+		   "&hi_l="+$('#hi_l').val()+"&lo_l="+$('#lo_l').val(),
+		   read2,"json");
+	}
+    });
 
-$('#use_autofan').click(function(){
-if($(this).is(":checked")){
-$('#hi_l').prop('disabled', false);
-$('#lo_l').prop('disabled', false);
-} else if($(this).is(":not(:checked)")){
-$('#tsub').prop('disabled', true);
-$('#hi_l').prop('disabled', true);
-$('#lo_l').prop('disabled', true);
-$.post('/autofan',
-"use_autofan="+$('#use_autofan').prop('checked').toString()+
-"&hi_l="+$('#hi_l').val()+"&lo_l="+$('#lo_l').val(),
-read2,"json");
-}
-});
+    $('#use_pump').click(function(){
+	$.post('/wlevel',
+	       "use_pump="+$('#use_pump').prop('checked').toString()+
+	       "&lv_hi="+$('#lv_hi').val()+"&lv_lo="+$('#lv_lo').val(),
+	       read4,"json");
+    });
+		    
+    $('#use_twitter').click(function(){
+	if($(this).is(":checked")){
+	    $('#twsub').prop('disabled', false);
+	    $('#stew_token').prop('disabled', false);
+	} else if($(this).is(":not(:checked)")){
+	    $('#twsub').prop('disabled', true);
+	    $('#stew_token').prop('disabled', true);
+	    $.post('/twitconf',
+		   "use_twitter="+$('#use_twitter').prop('checked').toString()+
+		   "&stew_token="+$('#stew_token').val(),
+		   read3,"json");
+	}
+    });
+    
+    $('#ssub').prop('disabled', true);
+    $('#tsub').prop('disabled', true);
+    $('#wsub').prop('disabled', true);
+    $('#twsub').prop('disabled', true);
 
-$('#use_twitter').click(function(){
-if($(this).is(":checked")){
-$('#twsub').prop('disabled', false);
-$('#stew_token').prop('disabled', false);
-} else if($(this).is(":not(:checked)")){
-$('#twsub').prop('disabled', true);
-$('#stew_token').prop('disabled', true);
-$.post('/twitconf',
-"use_twitter="+$('#use_twitter').prop('checked').toString()+
-"&stew_token="+$('#stew_token').val(),
-read3,"json");
-}
-});
+    $('#stew_token').keyup(function() {
+	if($(this).val() != '') {
+	    $('#twsub').prop('disabled', false);
+	}
+    });
+    
+    $('#lv_hi').keyup(function() {
+	if($(this).val() != '') {
+	    $('#wsub').prop('disabled', false);
+	}
+    });
 
-$('#ssub').prop('disabled', true);
-$('#tsub').prop('disabled', true);
-$('#wsub').prop('disabled', true);
-$('#twsub').prop('disabled', true);
+    $('#lv_lo').keyup(function() {
+	if($(this).val() != '') {
+	    $('#wsub').prop('disabled', false);
+	}
+    });
 
-$('#stew_token').keyup(function() {
-if($(this).val() != '') {
-$('#twsub').prop('disabled', false);
-}
-});
+    $('#on_h').keyup(function() {
+	if($(this).val() != '') {
+	    $('#ssub').prop('disabled', false);
+	}
+    });
+    
+    $('#on_m').keyup(function() {
+	if($(this).val() != '') {
+	    $('#ssub').prop('disabled', false);
+	}
+    });
 
-$('#lv_wa').keyup(function() {
-if($(this).val() != '') {
-$('#wsub').prop('disabled', false);
-}
-});
+    $('#off_h').keyup(function() {
+	if($(this).val() != '') {
+	    $('#ssub').prop('disabled', false);
+	}
+    });
 
-$('#lv_em').keyup(function() {
-if($(this).val() != '') {
-$('#wsub').prop('disabled', false);
-}
-});
+    $('#off_m').keyup(function() {
+	if($(this).val() != '') {
+	    $('#ssub').prop('disabled', false);
+	}
+    });
 
-$('#on_h').keyup(function() {
-if($(this).val() != '') {
-$('#ssub').prop('disabled', false);
-}
-});
+    $('#duration').keyup(function() {
+	if($(this).val() != '') {
+	    $('#ssub').prop('disabled', false);
+	}
+    });
 
-$('#on_m').keyup(function() {
-if($(this).val() != '') {
-$('#ssub').prop('disabled', false);
-}
-});
+    $('#hi_l').keyup(function() {
+	if($(this).val() != '') {
+	    $('#tsub').prop('disabled', false);
+	}
+    });
 
-$('#off_h').keyup(function() {
-if($(this).val() != '') {
-$('#ssub').prop('disabled', false);
-}
-});
+    $('#lo_l').keyup(function() {
+	if($(this).val() != '') {
+	    $('#tsub').prop('disabled', false);
+	}
+    });
 
-$('#off_m').keyup(function() {
-if($(this).val() != '') {
-$('#ssub').prop('disabled', false);
-}
-});
+    $('#sbtn').click(function(){
+	$('#setting').toggle();
+    });
 
-$('#hi_l').keyup(function() {
-if($(this).val() != '') {
-$('#tsub').prop('disabled', false);
-}
-});
-
-$('#lo_l').keyup(function() {
-if($(this).val() != '') {
-$('#tsub').prop('disabled', false);
-}
-});
-
-$('#sbtn').click(function(){
-$('#setting').toggle();
-});
-
-confset();
-upd();
-setInterval("upd()",30000);
+    confset();
+    upd();
+    setInterval("upd()",30000);
 
 });
 

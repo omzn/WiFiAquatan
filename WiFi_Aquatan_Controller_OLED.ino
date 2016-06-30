@@ -18,6 +18,7 @@
 #include <EEPROM.h>
 #include <ESP8266WebServer.h>
 #include <ESP8266mDNS.h>
+#include <WiFiUdp.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 #include <ArduinoJson.h>
@@ -26,11 +27,11 @@
 #include <DallasTemperature.h>
 #include <FS.h>
 
-//#include "Webpages.h"
 #include "sensors.h"
 #include "ledlight.h"
 #include "fan.h"
-#include "drv8830_i2c.h"
+#include "feeder.h"
+#include "pump.h"
 #include "OLEDScreen.h"
 
 #define PIN_1WIRE    (2)
@@ -53,6 +54,9 @@
 #define ATTINY85_PIN_DIM_LED   (0x80)
 #define ATTINY85_PIN_FAN       (0x01)
 
+#define DRV8830_1_ADDRESS      (0x64)
+#define DRV8830_2_ADDRESS      (0x63)
+
 #define EEPROM_SSID_ADDR             (0)
 #define EEPROM_PASS_ADDR            (32)
 #define EEPROM_MDNS_ADDR            (96)
@@ -61,7 +65,10 @@
 #define EEPROM_TWITTER_TOKEN_ADDR  (138)
 #define EEPROM_TWITTER_CONFIG_ADDR (170)
 #define EEPROM_WATER_LEVEL_ADDR    (186)
-#define EEPROM_LAST_ADDR           (188)
+#define EEPROM_PUMP_ADDR           (188)
+#define EEPROM_DIM_ADDR            (189)
+#define EEPROM_DIMDUR_ADDR         (190)
+#define EEPROM_LAST_ADDR           (191)
 
 #define UDP_LOCAL_PORT      (2390)
 #define NTP_PACKET_SIZE       (48)
@@ -78,6 +85,8 @@ boolean settingMode;
 String ssidList;
 
 volatile boolean rtcint;
+int pss;
+uint32_t reset_count = 0;
 uint32_t timer_count = 0;
 uint32_t auto_page = 2;
 byte doRestart = 0;
@@ -98,7 +107,12 @@ Sensors    sensors;
 ledLight   light(ATTINY85_LED_ADDRESS, ATTINY85_PIN_LED);
 fanCooler  fan(ATTINY85_LED_ADDRESS, ATTINY85_PIN_FAN);
 OLEDScreen oled(&sensors, &light, &fan);
-drv8830_i2c feeder(0x64);
+#ifdef USE_FEEDER
+drumFeeder feeder(DRV8830_1_ADDRESS, PIN_FEED_SW);
+#endif
+#ifdef USE_PUMP
+waterPump  pump(DRV8830_2_ADDRESS, &sensors);
+#endif
 /*
  * interrupt handlers
  */
@@ -135,7 +149,12 @@ void setup() {
   sensors.begin();
   sensors.siteName(website_name);
 
-  //  pinMode(PIN_FEED_SW, INPUT_PULLUP);
+#ifdef USE_PUMP
+  pump.begin();
+#endif
+#ifdef USE_FEEDER
+  pinMode(PIN_FEED_SW, INPUT_PULLUP);
+#endif
 
   rtcint = 0;
   if (! rtc.isrunning() ) {
@@ -166,9 +185,9 @@ void setup() {
   oled.setTextColor(WHITE, BLACK);
   delay(10);
 
+  WiFi.mode(WIFI_STA);
   if (restoreConfig()) {
     if (checkConnection()) {
-      WiFi.mode(WIFI_STA);
       if (mdns.begin(sensors.siteName().c_str(), WiFi.localIP())) {
 #ifdef DEBUG
         Serial.println("MDNS responder started.");
@@ -179,6 +198,7 @@ void setup() {
       udp.begin(UDP_LOCAL_PORT);
 
       sensors.readData();
+
       startWebServer_normal();
       return;
     } else {
@@ -247,17 +267,14 @@ void loop() {
         if (epoch > 0) {
           rtc.adjust(DateTime(epoch + SECONDS_UTC_TO_JST ));
         }
-        //      rtc.adjust(DateTime(SECONDS_FROM_1970_TO_2000));
       }
+      //      if (timer_count % 900 == 0) {
+      //        sensors.logData();
+      //      }
 
-
-//      if (timer_count % 900 == 0) {
-//        sensors.logData();
-//      }
-
-//      if (timer_count % 10 == 0) {
-//        light.heartbeat();
-//      }
+      //      if (timer_count % 10 == 0) {
+      //        light.heartbeat();
+      //      }
 
       if (timer_count % 15 == 14) {
         if (auto_page > 1) {
@@ -277,19 +294,39 @@ void loop() {
       }
       if (doRestart == 1) {
         if (timer_count > 10) {
-          ESP.restart();        
+          ESP.restart();
         }
       }
     }
     oled.display();       // Refresh the display
 
-    int hh, mm;
+    int hh, mm, ss;
     DateTime now = rtc.now();
     hh = now.hour();
     mm = now.minute();
+    ss = now.second();
+    if (ss == pss) { // ssが進まない場合，i2cに障害発生
+      reset_count++;
+#ifdef DEBUG
+      Serial.println("No data from RTC...");
+      Serial.print("reset_count:");
+      Serial.println(reset_count);
+#endif
+      if (reset_count > 10) { // 10秒経っても改善されない
+#ifdef DEBUG
+        Serial.println("Reboot");
+#endif
+        ESP.restart(); // 再起動
+      }
+    } else {
+      reset_count = 0;
+      pss = ss;
+    }
     light.control(hh, mm);
     fan.control(sensors.getWaterTemp());
-
+#ifdef USE_PUMP
+    pump.control();
+#endif
     delay(5);
     rtcint = 0;
     timer_count++;
@@ -392,6 +429,16 @@ boolean restoreConfig() {
   int e_off_m = EEPROM.read(EEPROM_SCHEDULE_ADDR + 4);
   light.setSchedule(e_on_h, e_on_m, e_off_h, e_off_m);
 
+  int use_slow = EEPROM.read(EEPROM_DIM_ADDR) == 1 ? 1 : 0;
+  int duration = EEPROM.read(EEPROM_DIMDUR_ADDR);
+  if (use_slow == 1) {
+    if (duration > 0) {
+      light.enableDim(duration);
+    }
+  } else {
+    light.disableDim();
+  }
+
   int use_autofan = EEPROM.read(EEPROM_AUTOFAN_ADDR) == 1 ? 1 : 0;
   if (use_autofan == 1) {
     fan.enableAutoFan();
@@ -406,12 +453,20 @@ boolean restoreConfig() {
   b2 = EEPROM.read(EEPROM_AUTOFAN_ADDR + 4);
   fan.lowLimit((float)(b1 | b2 << 8) / 10.0);
 
-  int lv_wa = EEPROM.read(EEPROM_WATER_LEVEL_ADDR);
-  int lv_em = EEPROM.read(EEPROM_WATER_LEVEL_ADDR + 1);
-  // sensors.waterLevelLimitWarn(lv_wa);
-  // sensors.waterLevelLimitEmerge(lv_em);
-  sensors.waterLevelLimits(lv_wa,lv_em);
-  
+  int lv_hi = EEPROM.read(EEPROM_WATER_LEVEL_ADDR);
+  int lv_lo = EEPROM.read(EEPROM_WATER_LEVEL_ADDR + 1);
+  // sensors.waterLevelLimitHigh(lv_hi);
+  // sensors.waterLevelLimitLow(lv_lo);
+  sensors.waterLevelLimits(lv_hi, lv_lo);
+
+#ifdef USE_PUMP
+  int use_pump = EEPROM.read(EEPROM_PUMP_ADDR);
+  if (use_pump) {
+    pump.enablePump();
+  } else {
+    pump.disablePump();
+  }
+#endif
   use_twitter  = EEPROM.read(EEPROM_TWITTER_CONFIG_ADDR) == 1 ? 1 : 0;
   if (EEPROM.read(EEPROM_TWITTER_TOKEN_ADDR) != 0) {
     stewgate_token = "";
@@ -664,6 +719,7 @@ void startWebServer_normal() {
   webServer.on("/autofan", handleAutofan);
   webServer.on("/wlevel", handleWaterLevel);
   webServer.on("/twitconf", handleTwitconf);
+  webServer.on("/reboot", handleReboot);
 //  webServer.on("/j.js",    handleJS);
   webServer.begin();
 }
@@ -692,6 +748,15 @@ void handleCss() {
   digitalWrite(PIN_LED, WEB_LED_OFF);
 }
 
+void handleReboot() {
+  digitalWrite(PIN_LED, WEB_LED_ON);
+  String message;
+  message = "{reboot:\"done\"}";
+  webServer.send(200, "application/json", message);
+  digitalWrite(PIN_LED, WEB_LED_OFF);
+  ESP.restart();
+}
+
 void handleMeasure() {
   digitalWrite(PIN_LED, WEB_LED_ON);
   String message;
@@ -705,17 +770,20 @@ void handleMeasure() {
   json["pressure"] = sensors.getPressure();
   json["humidity"] = sensors.getHumidity();
   json["water_level"] = sensors.getWaterLevel();
-  if (sensors.getWaterLevel() >= sensors.waterLevelLimitWarn()) {
-    if  (sensors.getWaterLevel() >= sensors.waterLevelLimitEmerge()) {
-      json["water_level_status"] = "emerge";
+  if (sensors.getWaterLevel() >= sensors.waterLevelLimitHigh()) {
+    if  (sensors.getWaterLevel() >= sensors.waterLevelLimitLow()) {
+      json["water_level_status"] = "low";
     } else {
-      json["water_level_status"] = "warn";
+      json["water_level_status"] = "normal";
     }
   } else {
-      json["water_level_status"] = "normal";    
+      json["water_level_status"] = "full";    
   }
   json["led"] = light.value();
   json["fan"] = fan.value();
+#ifdef USE_PUMP  
+  json["pump"] = pump.status();
+#endif
   sprintf(buf1, "%02d:%02d", light.on_h(), light.on_m());
   json["led_ontime"] = buf1;
   sprintf(buf2, "%02d:%02d", light.off_h(), light.off_m());
@@ -738,11 +806,16 @@ void handleConfig() {
   json["on_m"] = light.on_m();
   json["off_h"] = light.off_h();
   json["off_m"] = light.off_m();
+  json["use_slow"] = light.dim();
+  json["duration"] = light.duration();
   json["use_autofan"] = fan.enabled();
   json["hi_l"] = fan.highLimit();
   json["lo_l"] = fan.lowLimit();
-  json["lv_wa"] = sensors.waterLevelLimitWarn();
-  json["lv_em"] = sensors.waterLevelLimitEmerge();
+#ifdef USE_PUMP
+  json["use_pump"] = pump.enabled();
+#endif
+  json["lv_hi"] = sensors.waterLevelLimitHigh();
+  json["lv_lo"] = sensors.waterLevelLimitLow();
   json["use_twitter"] = use_twitter;
   json["stew_token"] = stewgate_token;
 
@@ -762,7 +835,24 @@ void handleSchedule() {
   int on_m  = webServer.arg("on_m").toInt();
   int off_h = webServer.arg("off_h").toInt();
   int off_m = webServer.arg("off_m").toInt();
+  int dur = webServer.arg("duration").toInt();
 
+  int use_slow_i = (webServer.arg("use_slow") == "true" ? 1: 0);
+  if (use_slow_i != light.dim()) {
+    if (use_slow_i) {
+      if (dur > 0) {
+        light.enableDim(dur);
+      } else {
+        light.enableDim();        
+      }
+    } else {
+      light.disableDim();
+    }
+    EEPROM.write(EEPROM_DIM_ADDR, char(use_slow_i));
+    EEPROM.write(EEPROM_DIMDUR_ADDR, char(dur));
+    EEPROM.commit();
+  }
+  
   int use_s_i;
   use_s_i = (use_s == "true" ? 1: 0);
   
@@ -797,6 +887,8 @@ void handleSchedule() {
   json["on_m"] = light.on_m();
   json["off_h"] = light.off_h();
   json["off_m"] = light.off_m();
+  json["use_slow"] = light.dim();
+  json["duration"] = light.duration();
   json.printTo(message);
   webServer.send(200, "application/json", message);
   digitalWrite(PIN_LED, WEB_LED_OFF);
@@ -850,18 +942,32 @@ void handleWaterLevel() {
   DynamicJsonBuffer jsonBuffer;
   JsonObject& json = jsonBuffer.createObject();
 
-  int8_t lv_wa  = webServer.arg("lv_wa").toInt();
-  int8_t lv_em  = webServer.arg("lv_em").toInt();
-
-  if (lv_wa != sensors.waterLevelLimitWarn() || lv_em != sensors.waterLevelLimitEmerge()) {
-    sensors.waterLevelLimits(lv_wa,lv_em);
-    // hcsr04を制御するATtiny85において，EEPROMを書き換える命令を発行するとi2cがjamする．
-    EEPROM.write(EEPROM_WATER_LEVEL_ADDR + 0, char(lv_wa));
-    EEPROM.write(EEPROM_WATER_LEVEL_ADDR + 1, char(lv_em));
+  int8_t lv_hi  = webServer.arg("lv_hi").toInt();
+  int8_t lv_lo  = webServer.arg("lv_lo").toInt();
+#ifdef USE_PUMP
+  String arg_pump = webServer.arg("use_pump") ;
+  int use_p;
+  use_p = (arg_pump == "true" ? 1: 0);  
+  if (use_p != pump.enabled()) {
+    if (use_p) {
+      pump.enablePump();
+    } else {
+      pump.disablePump();      
+    }
+    EEPROM.write(EEPROM_PUMP_ADDR, char(use_p));
     EEPROM.commit();
   }
-  json["lv_wa"] = lv_wa;
-  json["lv_em"] = lv_em;
+  json["use_pump"] = pump.enabled();
+#endif  
+  if (lv_hi != sensors.waterLevelLimitHigh() || lv_lo != sensors.waterLevelLimitLow()) {
+    sensors.waterLevelLimits(lv_hi,lv_lo);
+    // hcsr04を制御するATtiny85において，EEPROMを書き換える命令を発行するとi2cがjamする．
+    EEPROM.write(EEPROM_WATER_LEVEL_ADDR + 0, char(lv_hi));
+    EEPROM.write(EEPROM_WATER_LEVEL_ADDR + 1, char(lv_lo));
+    EEPROM.commit();
+  }
+  json["lv_hi"] = lv_hi;
+  json["lv_lo"] = lv_lo;
   json.printTo(message);
   webServer.send(200, "application/json", message);
 #ifdef DEBUG
@@ -910,6 +1016,7 @@ void handleAction() {
   String ledstr = webServer.arg("led");
   String fanstr = webServer.arg("fan");
   String feedstr = webServer.arg("feed");
+  String pumpstr = webServer.arg("pump");
 
   if (ledstr != "") {
     if (ledstr == "on") {
@@ -919,6 +1026,7 @@ void handleAction() {
     } else if (ledstr.toInt() >= 0 && ledstr.toInt() <= 255) {
       light.value(ledstr.toInt());
     }
+    json["led"] = light.value();
   }
   if (fanstr != "") {
     if (fanstr == "on") {
@@ -928,45 +1036,25 @@ void handleAction() {
     } else if (fanstr.toInt() >= 0 && fanstr.toInt() <= 255) {
       fan.value(fanstr.toInt());
     }
+    json["fan"] = fan.value();
   }
+#ifdef USE_FEEDER
   if (feedstr != "") {
-    if (feedstr == "on") {
-      feeder.clearFault();
-      feeder.startMotor(0x3e,0x01);
-    } else if (feedstr == "off") {
-      feeder.floatMotor();
+    if (feedstr.toInt() >= 1 && feedstr.toInt() <= 3) {
+      json["feed"] = feeder.doFeed(feedstr.toInt());
     }
   }
-
-/*     
-  if (feedstr != "") {
-    if (feedstr.toInt() >= 1 && feedstr.toInt() <= 2) {
- //     feed.value(fanstr.toInt());
-      fault(0x64,0);
-      motor(0x64,0x2f,0x01);  // start
-      uint8_t count = 0;
-      while (digitalRead(PIN_FEED_SW) == 1) { // skip SW == 1
-        count++;
-        if (count > 1500) {
-          break;
-        }
-        delay(10);
-      }
-      while (digitalRead(PIN_FEED_SW) == 0) { // wait until SW == 1
-        count++;
-        if (count > 1500) {
-          break;
-        }
-        delay(10);
-      }
-      motor(0x64,0x00,0x00);  // stop
-      motor(0x64,0x00,0x03);  // break    
+#endif
+#ifdef USE_PUMP
+  if (pumpstr != "") {
+    if (pumpstr == "on") {
+      pump.refill();
+    } else if (pumpstr == "off") {
+      pump.stop();      
     }
+    json["pump"] = pump.status();
   }
-*/
-
-  json["led"] = light.value();
-  json["fan"] = fan.value();
+#endif
 
   json.printTo(message);
   webServer.send(200, "application/json", message);

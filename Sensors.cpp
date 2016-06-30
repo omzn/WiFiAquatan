@@ -61,29 +61,29 @@ int Sensors::getWaterLevel() {
 }
 
 void Sensors::waterLevelLimits(int w, int e) {
-  _waterLevelLimitWarn = w;
-  _waterLevelLimitEmerge = e;
-  i2cping->set_levels(_waterLevelLimitWarn, _waterLevelLimitEmerge);
+  _waterLevelLimitHigh = w;
+  _waterLevelLimitLow = e;
+  i2cping->set_levels(_waterLevelLimitHigh, _waterLevelLimitLow);
 //  _setWaterLevel = true;
 }
 
-int Sensors::waterLevelLimitWarn() {
-  return _waterLevelLimitWarn;
+int Sensors::waterLevelLimitHigh() {
+  return _waterLevelLimitHigh;
 }
 
-void Sensors::waterLevelLimitWarn(int v) {
-  _waterLevelLimitWarn = v;
-  i2cping->set_levels(_waterLevelLimitWarn, _waterLevelLimitEmerge);
+void Sensors::waterLevelLimitHigh(int v) {
+  _waterLevelLimitHigh = v;
+  i2cping->set_levels(_waterLevelLimitHigh, _waterLevelLimitLow);
   //_setWaterLevel = true;
 }
 
-int Sensors::waterLevelLimitEmerge() {
-  return _waterLevelLimitEmerge;
+int Sensors::waterLevelLimitLow() {
+  return _waterLevelLimitLow;
 }
 
-void Sensors::waterLevelLimitEmerge(int v) {
-  _waterLevelLimitEmerge = v;
-  i2cping->set_levels(_waterLevelLimitWarn, _waterLevelLimitEmerge);
+void Sensors::waterLevelLimitLow(int v) {
+  _waterLevelLimitLow = v;
+  i2cping->set_levels(_waterLevelLimitHigh, _waterLevelLimitLow);
   //_setWaterLevel = true;
 }
 

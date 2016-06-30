@@ -31,10 +31,10 @@ class Sensors {
     float getPressureLog(int id);
     float getHumidityLog(int id);
     void waterLevelLimits(int w, int e);
-    int waterLevelLimitWarn();
-    int waterLevelLimitEmerge();
-    void waterLevelLimitWarn(int v);
-    void waterLevelLimitEmerge(int v);
+    int waterLevelLimitHigh();
+    int waterLevelLimitLow();
+    void waterLevelLimitHigh(int v);
+    void waterLevelLimitLow(int v);
     String siteName();
     void siteName(String s);
 //    void setting();
@@ -51,8 +51,8 @@ class Sensors {
     float   humidity = -1.0;
     int16_t waterLevel = -1;
 
-    uint16_t _waterLevelLimitWarn = 0;
-    uint16_t _waterLevelLimitEmerge = 0;
+    uint16_t _waterLevelLimitHigh = 0;
+    uint16_t _waterLevelLimitLow = 0;
 
     uint8_t log_wd = 0;
     float   waterTempLog[100];

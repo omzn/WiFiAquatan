@@ -3,6 +3,7 @@
 ledLight::ledLight(uint8_t address, uint8_t pin) : attiny_i2c(address , pin ) {
   //  Wire.begin();
   _reset_flag = 1;
+  _dim = 0;
 }
 
 int ledLight::enabled() {
@@ -49,6 +50,24 @@ int ledLight::off_m() {
   return _off_m;
 }
 
+void ledLight::enableDim() {
+  _slow = 1;  
+}
+void ledLight::enableDim(int dur) {
+  _slow = 1;  
+  _duration = dur;
+}
+void ledLight::disableDim() {
+  _slow = 0;  
+}
+
+uint8_t ledLight::dim() {
+  return _slow;
+}
+uint8_t ledLight::duration() {
+  return _duration;
+}
+
 void ledLight::dim_on(int interval) {
   _pin |= 0x80;
   value(255, interval);
@@ -66,36 +85,36 @@ int ledLight::control(int hh, int mm) {
     if ((_on_h < _off_h) || (_on_h == _off_h && _on_m <= _off_m )) {
       if ((hh > _on_h || hh >= _on_h && mm >= _on_m) && (hh < _off_h || hh == _off_h && mm < _off_m)) {
         if (value() == 0) {
-          if (_reset_flag) {
+          if (_reset_flag || !_slow) {
             value(255);
           } else {
-            dim_on(10);
+            dim_on(_duration);
           }
         }
       } else {
         if (value() == 255) {
-          if (_reset_flag) {
+          if (_reset_flag || !_slow) {
             value(0);
           } else {
-            dim_off(10);
+            dim_off(_duration);
           }
         }
       }
     } else if ((_on_h > _off_h) || (_on_h == _off_h && _on_m >= _off_m )) {
       if ((hh > _off_h || hh >= _off_h && mm >= _off_m) && (hh < _on_h || hh == _on_h && mm < _on_m)) {
         if (value() == 255) {
-          if (_reset_flag) {
+          if (_reset_flag || !_slow) {
             value(0);
           } else {
-            dim_off(10);
+            dim_off(_duration);
           }
         }
       } else {
         if (value() == 0) {
-          if (_reset_flag) {
+          if (_reset_flag || !_slow) {
             value(255);
           } else {
-            dim_on(10);
+            dim_on(_duration);
           }
         }
       }
